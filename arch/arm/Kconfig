@@ -965,6 +965,8 @@ source "arch/arm/mach-imx/Kconfig"
 
 source "arch/arm/mach-mxs/Kconfig"
 
+source "arch/arm/mach-n329/Kconfig"
+
 source "arch/arm/mach-netx/Kconfig"
 
 source "arch/arm/mach-nomadik/Kconfig"

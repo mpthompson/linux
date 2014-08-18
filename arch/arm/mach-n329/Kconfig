@@ -2,9 +2,12 @@ config SOC_N32905
 	bool
 	select CPU_ARM926T
 
-config ARCH_MXS
+config ARCH_N329
 	bool "Nuvoton N329XX support"
 	depends on ARCH_MULTI_V5
+	select CLKSRC_MMIO
+	select PINCTRL
+	select SOC_BUS
 	select SOC_N32905
 	help
 	  Support for Nuvoton N329XX-based family of processors
