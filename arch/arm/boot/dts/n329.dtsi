@@ -78,7 +78,7 @@
 		reg = <0xB8000000 0xF000>;
 		ranges;
 
-		aic@B8000000 {
+		aic: interrupt-controller@B8000000 {
 			compatible = "nuvoton,aic";
 			interrupt-controller;
 			#interrupt-cells = <1>;

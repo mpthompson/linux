@@ -58,7 +58,7 @@ static void aic_ack_irq(struct irq_data *d)
 	 * handler can write any value to this register to indicate 
 	 * the end of its interrupt service.
 	 */
-	__raw_writel(0x01, aic_base + REG_AIC_EOSCR);
+	__raw_writel(0x01, aic_base + HW_AIC_EOSCR);
 }
 
 static void aic_mask_irq(struct irq_data *d)
@@ -66,7 +66,7 @@ static void aic_mask_irq(struct irq_data *d)
 	/* 
 	 * Disables the corresponding interrupt channel.
 	 */
-	__raw_writel(1 << (d->hwirq), aic_base + REG_AIC_MDCR);
+	__raw_writel(1 << (d->hwirq), aic_base + HW_AIC_MDCR);
 }
 
 static void aic_unmask_irq(struct irq_data *d)
@@ -74,7 +74,7 @@ static void aic_unmask_irq(struct irq_data *d)
 	/*
 	 * Enables the corresponding interrupt channel.
 	 */
-	__raw_writel(1 << (d->hwirq), aic_base + REG_AIC_MECR);
+	__raw_writel(1 << (d->hwirq), aic_base + HW_AIC_MECR);
 }
 
 static struct irq_chip n329_aic_chip = {
@@ -116,14 +116,14 @@ static int __init aic_of_init(struct device_node *np,
 	 * The AIC doesn't have an individual reset so we put the
 	 * source control registers back to their defaults.
 	 */
-	__raw_writel(0x47474747, aic_base + REG_AIC_SCR1);
-	__raw_writel(0x47474747, aic_base + REG_AIC_SCR2);
-	__raw_writel(0x47474747, aic_base + REG_AIC_SCR3);
-	__raw_writel(0x47474747, aic_base + REG_AIC_SCR4);
-	__raw_writel(0x47474747, aic_base + REG_AIC_SCR5);
-	__raw_writel(0x47474747, aic_base + REG_AIC_SCR6);
-	__raw_writel(0x47474747, aic_base + REG_AIC_SCR7);
-	__raw_writel(0x47474747, aic_base + REG_AIC_SCR8);
+	__raw_writel(0x47474747, aic_base + HW_AIC_SCR1);
+	__raw_writel(0x47474747, aic_base + HW_AIC_SCR2);
+	__raw_writel(0x47474747, aic_base + HW_AIC_SCR3);
+	__raw_writel(0x47474747, aic_base + HW_AIC_SCR4);
+	__raw_writel(0x47474747, aic_base + HW_AIC_SCR5);
+	__raw_writel(0x47474747, aic_base + HW_AIC_SCR6);
+	__raw_writel(0x47474747, aic_base + HW_AIC_SCR7);
+	__raw_writel(0x47474747, aic_base + HW_AIC_SCR8);
 
 	aic_domain = irq_domain_add_linear(np, AIC_NUM_IRQS,
 					     &aic_irq_domain_ops, NULL);

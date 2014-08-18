@@ -50,7 +50,7 @@ static const char __init *n329_get_soc_id(void)
 	gcr_base = of_iomap(np, 0);
 	WARN_ON(!gcr_base);
 
-	chipid = readl(digctl_base + HW_GCR_CHIPID);
+	chipid = readl(gcr_base + HW_GCR_CHIPID);
 	socid = chipid & HW_GCR_CHIPID_MASK;
 
 	iounmap(gcr_base);
