@@ -17,10 +17,6 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
-#include <linux/stmp_device.h>
-#include <linux/sched_clock.h>
-
-#include <asm/mach/time.h>
 
 #define HW_TMR_TCSR0	0x00	/* R/W Timer Control and Status Register 0. */
 #define HW_TMR_TCSR1	0x04	/* R/W Timer Control and Status Register 1. */
