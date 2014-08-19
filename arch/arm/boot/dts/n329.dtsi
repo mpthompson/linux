@@ -45,7 +45,7 @@
 			reg = <0xB0000000 0x200>;
 		};
 
-		clk@B0000200 {
+		clks: clk@B0000200 {
 			compatible = "nuvoton,clk";
 			reg = <0xB0000200 0x200>;
 		};
@@ -88,6 +88,8 @@
 		tmr@B8002000 {
 			compatible = "nuvoton,tmr";
 			reg = <0xB8002000 0x1000>;
+			interrupts = <14 15>;
+			clocks = <&clks 8>, <&clks 9>;
 		};
 
 		uart0@B8008000 {
