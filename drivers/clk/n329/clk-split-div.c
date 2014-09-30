@@ -237,7 +237,6 @@ static int clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
 	unsigned int div, value;
 	unsigned long flags = 0;
 	u32 val;
-	u32 tmp;
 
 	div = DIV_ROUND_UP(parent_rate, rate);
 
