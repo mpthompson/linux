@@ -48,6 +48,7 @@
 		clks: clk@B0000200 {
 			compatible = "nuvoton,clk";
 			reg = <0xB0000200 0x200>;
+			#clock-cells = <1>;
 		};
 
 		sdic@B0003000 {

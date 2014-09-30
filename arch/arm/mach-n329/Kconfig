@@ -11,3 +11,19 @@ config ARCH_N329
 	select SOC_N32905
 	help
 	  Support for Nuvoton N329XX-based family of processors
+
+if ARCH_N329
+
+choice
+	prompt "External Crystal"
+	default N329_EXTCLK_12M
+
+config N329_EXTCLK_12M
+	bool "12MHz"
+
+config N329_EXTCLK_27M
+	bool "27MHz"
+
+endchoice
+
+endif
