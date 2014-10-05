@@ -93,14 +93,14 @@
 			clocks = <&clks 122>, <&clks 123>;
 		};
 
-		uart0@B8008000 {
-			compatible = "nuvoton,uart";
+		uart0: serial@B8008000 {
+			compatible = "nuvoton,n329-uart";
 			reg = <0xB8008000 0x100>;
 			status = "disabled";
 		};
 
-		uart1@B8008100 {
-			compatible = "nuvoton,uart";
+		uart1: serial@B8008100 {
+			compatible = "nuvoton,n329-uart";
 			reg = <0xB8008100 0x100>;
 			status = "disabled";
 		};

@@ -23,4 +23,11 @@
 	model = "N3290x Series Demo Board";
 	compatible = "nuvoton,n32905-demo-board", "nuvoton,n32905",
 					"nuvoton,n329";
+
+	apb@B8000000 {
+		uart1: serial@B8008100 {
+			status = "okay";
+		};
+	};
 };
+

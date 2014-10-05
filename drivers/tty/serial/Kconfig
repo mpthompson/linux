@@ -1399,6 +1399,20 @@ config SERIAL_MXS_AUART_CONSOLE
 	help
 	  Enable a MXS AUART port to be the system console.
 
+config SERIAL_N329_UART
+	depends on ARCH_N329
+	tristate "Nuvoton N329XX UART support"
+	select SERIAL_CORE
+	help
+	  This driver supports the N329XX UART port.
+
+config SERIAL_N329_UART_CONSOLE
+	bool "Console on Nuvoton N329XX UART support"
+	depends on SERIAL_N329_UART=y
+	select SERIAL_CORE_CONSOLE
+	help
+	  Enable a N329XX UART port to be the system console.
+
 config SERIAL_XILINX_PS_UART
 	tristate "Cadence (Xilinx Zynq) UART support"
 	depends on OF
