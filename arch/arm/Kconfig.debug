@@ -432,13 +432,12 @@ choice
 		  Say Y here if you want kernel low-level debugging support
 		  on Vybrid based platforms.
 
-	config DEBUG_N329_UART
-		bool "Kernel low-level debugging via N329xx UART"
-		depends on SOC_N329
-		select DEBUG_UART_N329
+	config DEBUG_N32905_UART
+		bool "Kernel low-level debugging via N32905 UART"
+		depends on SOC_N32905
 		help
 		  Say Y here if you want kernel low-level debugging support
-		  on Nuvoton N329xx based platforms.
+		  on Nuvoton N32905 based platforms.
 
 	config DEBUG_NOMADIK_UART
 		bool "Kernel low-level debugging messages via NOMADIK UART"
@@ -1015,7 +1014,7 @@ config DEBUG_LL_INCLUDE
 				 DEBUG_IMX6SL_UART || \
 				 DEBUG_IMX6SX_UART
 	default "debug/msm.S" if DEBUG_MSM_UART || DEBUG_QCOM_UARTDM
-	default "debug/n329.S" if DEBUG_N329_UART
+	default "debug/n329.S" if DEBUG_N32905_UART
 	default "debug/omap2plus.S" if DEBUG_OMAP2PLUS_UART
 	default "debug/s3c24xx.S" if DEBUG_S3C24XX_UART
 	default "debug/sirf.S" if DEBUG_SIRFPRIMA2_UART1 || DEBUG_SIRFMARCO_UART1
@@ -1088,6 +1087,7 @@ config DEBUG_UART_PHYS
 	default 0x90020000 if DEBUG_NSPIRE_CLASSIC_UART || DEBUG_NSPIRE_CX_UART
 	default 0xa9a00000 if DEBUG_MSM_UART
 	default 0xb0090000 if DEBUG_VEXPRESS_UART0_CRX
+	default 0xb8008100 if DEBUG_N32905_UART
 	default 0xc0013000 if DEBUG_U300_UART
 	default 0xc8000000 if ARCH_IXP4XX && !CPU_BIG_ENDIAN
 	default 0xc8000003 if ARCH_IXP4XX && CPU_BIG_ENDIAN
@@ -1110,7 +1110,7 @@ config DEBUG_UART_PHYS
 	default 0xfff36000 if DEBUG_HIGHBANK_UART
 	default 0xfffff700 if ARCH_IOP33X
 	depends on DEBUG_LL_UART_8250 || DEBUG_LL_UART_PL01X || \
-		DEBUG_LL_UART_EFM32 || \
+		DEBUG_LL_UART_EFM32 || DEBUG_N32905_UART || \
 		DEBUG_UART_8250 || DEBUG_UART_PL01X || \
 		DEBUG_MSM_UART || DEBUG_QCOM_UARTDM || DEBUG_S3C24XX_UART
 
@@ -1139,6 +1139,7 @@ config DEBUG_UART_VIRT
 	default 0xf7fc9000 if DEBUG_BERLIN_UART
 	default 0xf8009000 if DEBUG_VEXPRESS_UART0_CA9
 	default 0xf8090000 if DEBUG_VEXPRESS_UART0_RS1
+	default 0xf8008100 if DEBUG_N32905_UART
 	default 0xfa71e000 if DEBUG_QCOM_UARTDM
 	default 0xfb009000 if DEBUG_REALVIEW_STD_PORT
 	default 0xfb10c000 if DEBUG_REALVIEW_PB1176_PORT
@@ -1178,7 +1179,7 @@ config DEBUG_UART_VIRT
 	default 0xff003000 if DEBUG_U300_UART
 	default DEBUG_UART_PHYS if !MMU
 	depends on DEBUG_LL_UART_8250 || DEBUG_LL_UART_PL01X || \
-		DEBUG_UART_8250 || DEBUG_UART_PL01X || \
+		DEBUG_UART_8250 || DEBUG_UART_PL01X || DEBUG_N32905_UART || \
 		DEBUG_MSM_UART || DEBUG_QCOM_UARTDM || DEBUG_S3C24XX_UART
 
 config DEBUG_UART_8250_SHIFT

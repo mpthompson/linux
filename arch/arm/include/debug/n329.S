@@ -31,5 +31,5 @@
 		.macro	busyuart,rd,rx
 1001:	ldr	\rd, [\rx, #HW_UA_FSR]
 		tst	\rd, #HW_UA_FSR_TE_FLAG
-		bne	1001b
+		beq	1001b
 		.endm

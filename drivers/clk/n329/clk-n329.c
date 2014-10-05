@@ -215,7 +215,7 @@ enum n329_clk {
 	timer1_pclk		= 123,
 	wdt_pclk		= 124,
 	tic_pclk		= 125,
-	kpi_pclk		= 126
+	kpi_pclk		= 126,
 	clk_max
 };
 
