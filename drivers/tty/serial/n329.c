@@ -45,8 +45,98 @@ static struct uart_driver n329_uart_driver;
 #define HW_COM_TOR		0x20
 #define HW_COM_BAUD		0x24
 
+#define UARTx_FCR_FIFO_LEVEL1	0x00
+#define UARTx_FCR_FIFO_LEVEL4	0x10
+#define UARTx_FCR_FIFO_LEVEL8	0x20
+#define UARTx_FCR_FIFO_LEVEL14	0x30
+#define UARTx_FCR_FIFO_LEVEL30	0x40
+#define UARTx_FCR_FIFO_LEVEL46	0x50
+#define UARTx_FCR_FIFO_LEVEL62	0x60
+
+#define UART_FCR_RFR			0x02
+#define UART_FCR_TFR			0x04
+
+#define UART_TXRXFIFO_RESET	(UART_FCR_RFR | UART_FCR_TFR)
+
+#define UART_FSR_ROE			0x00000000		// Rx Overrun error
+#define UART_FSR_PE				0x00000010		// Parity error
+#define UART_FSR_FE				0x00000020		// Frame error
+#define UART_FSR_BI				0x00000040		// Break interrupt
+#define UART_FSR_RFE			0x00004000		// Rx FIFO empty
+#define UART_FSR_RFF			0x00008000		// Rx FIFO full
+#define UART_FSR_RPMASK			(0x00003F00)	// Rx FIFO pointer
+#define UART_FSR_TFE			0x00400000		// Tx FIFO empty
+#define UART_FSR_TFF			0x00800000		// Tx FIFO full
+#define UART_FSR_TPMASK			(0x003F0000)	// Tx FIFO pointer
+#define UART_FSR_TOE			0x01000000		// Tx Overrun error
+#define UART_FSR_TEMT			0x10000000		// Transmitter empty
+	
+#define UART_LCR_WLEN5			0x00
+#define UART_LCR_WLEN6			0x01
+#define UART_LCR_WLEN7			0x02
+#define UART_LCR_WLEN8			0x03
+#define UART_LCR_CSMASK			(0x3)
+#define UART_LCR_PARITY			0x08
+#define UART_LCR_NPAR			0x00
+#define UART_LCR_OPAR			0x00
+#define UART_LCR_EPAR			0x10
+#define UART_LCR_PMMASK			(0x30)
+#define UART_LCR_SPAR			0x20
+#define UART_LCR_SBC			0x40
+#define UART_LCR_NSB			0x00
+#define UART_LCR_NSB1_5			0x04
+
+#define UART_IER_TOUT			BIT(11)
+#define UART_IER_RTO			BIT(4)
+#define UART_IER_MSI			BIT(3)
+#define UART_IER_RLSI			BIT(2)
+#define UART_IER_THRI			BIT(1)
+#define UART_IER_RDI			BIT(0)
+
+#define UART_ISR_EDMA_RX_Flag	BIT(31)		// EDMA RX Mode Flag
+#define UART_ISR_HW_Wake_INT	BIT(30)		// Wake up Interrupt pin status
+#define UART_ISR_HW_Buf_Err_INT	BIT(29)		// Buffer Error Interrupt pin status
+#define UART_ISR_HW_Tout_INT	BIT(28)		// Time out Interrupt pin status
+#define UART_ISR_HW_Modem_INT	BIT(27)		// MODEM Status Interrupt pin status
+#define UART_ISR_HW_RLS_INT		BIT(26)		// Receive Line Status Interrupt pin status
+#define UART_ISR_Rx_ack_st		BIT(25)		// TX ack pin status
+#define UART_ISR_Rx_req_St		BIT(24)		// TX req pin status
+#define UART_ISR_EDMA_TX_Flag	BIT(23)		// EDMA TX Mode Flag
+#define UART_ISR_HW_Wake_IF		BIT(22)		// Wake up Flag
+#define UART_ISR_HW_Buf_Err_IF	BIT(21)		// Buffer Error Flag
+#define UART_ISR_HW_Tout_IF		BIT(20)		// Time out Flag
+#define UART_ISR_HW_Modem_IF	BIT(19)		// MODEM Status Flag
+#define UART_ISR_HW_RLS_IF		BIT(18)		// Receive Line Status Flag
+#define UART_ISR_Tx_ack_st		BIT(17)		// TX ack pin status
+#define UART_ISR_Tx_req_St		BIT(16)		// TX req pin status
+#define UART_ISR_Soft_RX_Flag	BIT(15)		// Software RX Mode Flag
+#define UART_ISR_Wake_INT		BIT(14)		// Wake up Interrupt pin status
+#define UART_ISR_Buf_Err_INT	BIT(13)		// Buffer Error Interrupt pin status
+#define UART_ISR_Tout_INT		BIT(12)		// Time out interrupt Interrupt pin status
+#define UART_ISR_Modem_INT		BIT(11)		// MODEM Status Interrupt pin status
+#define UART_ISR_RLS_INT		BIT(10)		// Receive Line Status Interrupt pin status
+#define UART_ISR_THRE_INT		BIT(9)		// Transmit Holding Register Empty Interrupt pin status
+#define UART_ISR_RDA_INT		BIT(8)		// Receive Data Available Interrupt pin status
+#define UART_ISR_Soft_TX_Flag	BIT(7)		// Software TX Mode Flag
+#define UART_ISR_Wake_IF		BIT(6)		// Wake up Flag
+#define UART_ISR_Buf_Err_IF		BIT(5)		// Buffer Error Flag
+#define UART_ISR_Tout_IF		BIT(4)		// Time out interrupt Flag
+#define UART_ISR_Modem_IF		BIT(3)		// MODEM Status Flag
+#define UART_ISR_RLS_IF			BIT(2)		// Receive Line Status Flag
+#define UART_ISR_THRE_IF		BIT(1)		// Transmit Holding Register Empty Flag
+#define UART_ISR_RDA_IF			BIT(0)		// Receive Data Available Flag
+
 #define N329_UART_PORTS 2
-#define N329_UART_FIFO_SIZE 16
+#define N329_UART_FIFO_SIZE 16         
+
+/* register access controls */
+#define portaddr(s, reg) ((s->port.membase) + (reg))
+#define rd_regb(s, reg) (__raw_readb(portaddr(s, reg)))
+#define rd_regl(s, reg) (__raw_readl(portaddr(s, reg)))
+#define wr_regb(s, reg, val) \
+	do { __raw_writeb(val, portaddr(s, reg)); } while(0)
+#define wr_regl(s, reg, val) \
+	do { __raw_writel(val, portaddr(s, reg)); } while(0)
 
 enum n329_uart_type {
 	N32905_UART
@@ -151,6 +241,12 @@ static void n329_uart_reset(struct uart_port *u)
 static int n329_uart_startup(struct uart_port *u)
 {
 	// XXX TBD
+	int ret;
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	ret = clk_prepare_enable(s->clk);
+	if (ret)
+		return ret;
 
 	return 0;
 }
@@ -158,6 +254,9 @@ static int n329_uart_startup(struct uart_port *u)
 static void n329_uart_shutdown(struct uart_port *u)
 {
 	// XXX TBD
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	clk_disable_unprepare(s->clk);
 }
 
 static unsigned int n329_uart_tx_empty(struct uart_port *u)
@@ -220,11 +319,11 @@ static void n329_console_putchar(struct uart_port *u, int ch)
 	struct n329_uart_port *s = to_n329_uart_port(u);
 
 	/* wait if the fifo is full */
-	while (readl(s->port.membase + HW_COM_FSR) & BIT(23))
+	while (rd_regl(s, HW_COM_FSR) & UART_FSR_TFF)
 		barrier();
 
 	/* send the character */
-	writel(ch, s->port.membase + HW_COM_TX);
+	wr_regl(s, HW_COM_TX, ch);
 }
 
 static void n329_console_write(struct console *co, const char *str, 
@@ -234,16 +333,16 @@ static void n329_console_write(struct console *co, const char *str,
 
 	s = n329_uart_ports[co->index];
 
-	// clk_enable(s->clk);
+	clk_enable(s->clk);
 
 	/* send the string */
 	uart_console_write(&(s->port), str, count, n329_console_putchar);
 
 	/* wait for the fifo to empty */
-	while (~readl(s->port.membase + HW_COM_FSR) & BIT(22))
+	while (~rd_regl(s, HW_COM_FSR) & UART_FSR_TFE)
 		barrier();
 
-	// clk_disable(s->clk);
+	clk_disable(s->clk);
 }
 
 static int __init n329_console_setup(struct console *co, char *options)
@@ -266,9 +365,9 @@ static int __init n329_console_setup(struct console *co, char *options)
 	if (!s)
 		return -ENODEV;
 
-	// ret = clk_prepare_enable(s->clk);
-	// if (ret)
-	// 	return ret;
+	ret = clk_prepare_enable(s->clk);
+	if (ret)
+	 	return ret;
 
 	/*
 	// XXX TBD
@@ -280,7 +379,7 @@ static int __init n329_console_setup(struct console *co, char *options)
 
 	ret = uart_set_options(&s->port, co, baud, parity, bits, flow);
 
-	// clk_disable_unprepare(s->clk);
+	clk_disable(s->clk);
 
 	return ret;
 }

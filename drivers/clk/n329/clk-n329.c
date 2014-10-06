@@ -224,7 +224,7 @@ static struct clk_onecell_data clk_data;
 
 static enum n329_clk clks_init_on[] __initdata = {
 	cpu_clk, pclk_clk, hclk_clk, sram_clk, ddr_clk, hclk1_clk,
-	timer0_pclk, wdt_pclk, uart0_pclk
+	timer0_pclk, wdt_pclk, uart1_pclk, uart1_clk
 };
 
 static void __init n329_clocks_init(struct device_node *np)
@@ -442,6 +442,13 @@ static void __init n329_clocks_init(struct device_node *np)
 	for (i = 0; i < ARRAY_SIZE(clks_init_on); i++) {
 		clk_prepare_enable(clks[clks_init_on[i]]);
 	}
+
+	pr_info("XTL clock = %lu\n", clk_get_rate(clks[xtal_clk]));
+	pr_info("RTX clock = %lu\n", clk_get_rate(clks[rtx_clk]));
+	pr_info("SYS clock = %lu\n", clk_get_rate(clks[sys_clk]));
+	pr_info("CPU clock = %lu\n", clk_get_rate(clks[cpu_clk]));
+	pr_info("AHP clock = %lu\n", clk_get_rate(clks[hclk_clk]));
+	pr_info("APB clock = %lu\n", clk_get_rate(clks[pclk_clk]));
 }
 
 CLK_OF_DECLARE(n329_clk, "nuvoton,clk", n329_clocks_init);

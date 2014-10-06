@@ -138,7 +138,7 @@ static void __init n329_clockevents_init(struct device_node *np)
 		return;
 	}
 
-	clk_enable(timer_clk);
+	clk_prepare_enable(timer_clk);
 
 	__raw_writel(0x00, tmr_base + HW_TMR_TCSR0);
 	__raw_writel(0x01, tmr_base + HW_TMR_TISR);
@@ -152,7 +152,7 @@ static void __init n329_clockevents_init(struct device_node *np)
 	/* Configure and register a clock event device. */
 	n329_clockevent_device.cpumask = cpumask_of(0);
 	clockevents_config_and_register(&n329_clockevent_device,
-					clk_get_rate(timer_clk),
+					clock_event_rate,
 					0xf, 0xffffffff);
 }
 
@@ -172,7 +172,7 @@ static struct clocksource clocksource_n329 = {
 
 static void __init n329_clocksource_init(struct device_node *np)
 {
-	unsigned int c;
+	unsigned int clk_rate;
 	struct clk *timer_clk;
 
 	/* Timer 1 clock source. */
@@ -182,7 +182,7 @@ static void __init n329_clocksource_init(struct device_node *np)
 		return;
 	}
 
-	clk_enable(timer_clk);
+	clk_prepare_enable(timer_clk);
 
 	__raw_writel(0x00, tmr_base + HW_TMR_TCSR1);
 	__raw_writel(0x02, tmr_base + HW_TMR_TISR);
@@ -191,8 +191,8 @@ static void __init n329_clocksource_init(struct device_node *np)
 					TMR_COUNTEN | TMR_PERIOD | TMR_TDREN, 
 					tmr_base + HW_TMR_TCSR1);
 
-	c = clk_get_rate(timer_clk);
-	clocksource_register_hz(&clocksource_n329, c);
+	clk_rate = clk_get_rate(timer_clk);
+	clocksource_register_hz(&clocksource_n329, clk_rate);
 }
 
 static void __init n329_timer_init(struct device_node *np)
