@@ -87,7 +87,10 @@ asmlinkage void __exception_irq_entry aic_handle_irq(struct pt_regs *regs)
 {
 	u32 irqnr;
 
+	irqnr = __raw_readl(aic_base + HW_AIC_IPER);
 	irqnr = __raw_readl(aic_base + HW_AIC_ISNR);
+	if (!irqnr)
+		__raw_writel(0x01, aic_base + HW_AIC_EOSCR);
 	irqnr = irq_find_mapping(aic_domain, irqnr);
 	handle_IRQ(irqnr, regs);
 }
@@ -116,6 +119,8 @@ static int __init aic_of_init(struct device_node *np,
 	 * The AIC doesn't have an individual reset so we put the
 	 * source control registers back to their defaults.
 	 */
+	__raw_writel(0xFFFFFFFF, aic_base + HW_AIC_MDCR);
+	__raw_writel(0xFFFFFFFF, aic_base + HW_AIC_SCCR);
 	__raw_writel(0x47474747, aic_base + HW_AIC_SCR1);
 	__raw_writel(0x47474747, aic_base + HW_AIC_SCR2);
 	__raw_writel(0x47474747, aic_base + HW_AIC_SCR3);

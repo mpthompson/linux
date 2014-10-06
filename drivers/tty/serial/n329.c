@@ -205,17 +205,50 @@ static struct n329_uart_port *n329_uart_ports[N329_UART_PORTS];
 static void n329_console_write(struct console *co, const char *str, 
 			unsigned int count)
 {
-	// TBD
+	// XXX TBD
 }
 
 static int __init n329_console_setup(struct console *co, char *options)
 {
-	// TBD
-	return -ENODEV;
+	struct n329_uart_port *s;
+	int baud = 115200;
+	int bits = 8;
+	int parity = 'n';
+	int flow = 'n';
+	int ret;
+
+	/*
+	 * Check whether an invalid uart number has been specified, and
+	 * if so, search for the first available port that does have
+	 * console support.
+	 */
+	if (co->index == -1 || co->index >= ARRAY_SIZE(n329_uart_ports))
+		co->index = 0;
+	s = n329_uart_ports[co->index];
+	if (!s)
+		return -ENODEV;
+
+	ret = clk_prepare_enable(s->clk);
+	if (ret)
+		return ret;
+
+	/*
+	// XXX TBD
+	if (options)
+		uart_parse_options(options, &baud, &parity, &bits, &flow);
+	else
+		auart_console_get_options(&s->port, &baud, &parity, &bits);
+	*/
+
+	ret = uart_set_options(&s->port, co, baud, parity, bits, flow);
+
+	clk_disable_unprepare(s->clk);
+
+	return ret;
 }
 
 static struct console n329_uart_console = {
-	.name			= "ttyAPP",
+	.name			= "ttyS",
 	.write			= n329_console_write,
 	.device			= uart_console_device,
 	.setup			= n329_console_setup,
@@ -227,13 +260,13 @@ static struct console n329_uart_console = {
 
 static struct uart_driver n329_uart_driver = {
 	.owner			= THIS_MODULE,
-	.driver_name	= "ttyAPP",
-	.dev_name		= "ttyAPP",
+	.driver_name	= "ttyS",
+	.dev_name		= "ttyS",
 	.major			= 0,
 	.minor			= 0,
 	.nr				= N329_UART_PORTS,
 #ifdef CONFIG_SERIAL_N329_UART_CONSOLE
-	.cons =		&n329_uart_console,
+	.cons =			&n329_uart_console,
 #endif
 };
 
