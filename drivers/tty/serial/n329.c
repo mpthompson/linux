@@ -33,6 +33,18 @@
 
 static struct uart_driver n329_uart_driver;
 
+#define HW_COM_TX		0x00
+#define HW_COM_RX		0x00
+#define HW_COM_IER		0x04
+#define HW_COM_FCR		0x08
+#define HW_COM_LCR		0x0C
+#define HW_COM_MCR		0x10
+#define HW_COM_MSR		0x14
+#define HW_COM_FSR		0x18
+#define HW_COM_ISR		0x1C
+#define HW_COM_TOR		0x20
+#define HW_COM_BAUD		0x24
+
 #define N329_UART_PORTS 2
 #define N329_UART_FIFO_SIZE 16
 
@@ -202,10 +214,36 @@ static struct uart_ops n329_uart_ops = {
 static struct n329_uart_port *n329_uart_ports[N329_UART_PORTS];
 
 #ifdef CONFIG_SERIAL_N329_UART_CONSOLE
+
+static void n329_console_putchar(struct uart_port *u, int ch)
+{
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	/* wait if the fifo is full */
+	while (readl(s->port.membase + HW_COM_FSR) & BIT(23))
+		barrier();
+
+	/* send the character */
+	writel(ch, s->port.membase + HW_COM_TX);
+}
+
 static void n329_console_write(struct console *co, const char *str, 
 			unsigned int count)
 {
-	// XXX TBD
+	struct n329_uart_port *s;
+
+	s = n329_uart_ports[co->index];
+
+	// clk_enable(s->clk);
+
+	/* send the string */
+	uart_console_write(&(s->port), str, count, n329_console_putchar);
+
+	/* wait for the fifo to empty */
+	while (~readl(s->port.membase + HW_COM_FSR) & BIT(22))
+		barrier();
+
+	// clk_disable(s->clk);
 }
 
 static int __init n329_console_setup(struct console *co, char *options)
@@ -228,9 +266,9 @@ static int __init n329_console_setup(struct console *co, char *options)
 	if (!s)
 		return -ENODEV;
 
-	ret = clk_prepare_enable(s->clk);
-	if (ret)
-		return ret;
+	// ret = clk_prepare_enable(s->clk);
+	// if (ret)
+	// 	return ret;
 
 	/*
 	// XXX TBD
@@ -242,7 +280,7 @@ static int __init n329_console_setup(struct console *co, char *options)
 
 	ret = uart_set_options(&s->port, co, baud, parity, bits, flow);
 
-	clk_disable_unprepare(s->clk);
+	// clk_disable_unprepare(s->clk);
 
 	return ret;
 }
