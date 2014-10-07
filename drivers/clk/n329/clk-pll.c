@@ -35,7 +35,7 @@ struct clk_pll {
 static int clk_pll_is_enabled(struct clk_hw *hw)
 {
 	int state;
-	u32 pllcon;
+	unsigned long pllcon;
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 
 	pllcon = __raw_readl(pll->base);
@@ -47,7 +47,7 @@ static int clk_pll_is_enabled(struct clk_hw *hw)
 
 static int clk_pll_enable(struct clk_hw *hw)
 {
-	u32 pllcon;
+	unsigned long pllcon;
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 
 	pllcon = __raw_readl(pll->base);
@@ -60,7 +60,7 @@ static int clk_pll_enable(struct clk_hw *hw)
 
 static void clk_pll_disable(struct clk_hw *hw)
 {
-	u32 pllcon;
+	unsigned long pllcon;
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 
 	pllcon = __raw_readl(pll->base);
@@ -68,7 +68,8 @@ static void clk_pll_disable(struct clk_hw *hw)
 	__raw_writel(pllcon, pll->base);
 }
 
-static u32 clk_pll_calc_rate(u32 fin, u32 nf, u32 nr, u32 no)
+static unsigned long clk_pll_calc_rate(unsigned long fin, 
+				unsigned long nf, unsigned long nr, unsigned long no)
 {
 	u64 fout;
 	
@@ -82,15 +83,16 @@ static u32 clk_pll_calc_rate(u32 fin, u32 nf, u32 nr, u32 no)
 	do_div(fout, no);
 #endif
 
-	return (u32) fout;
+	return (unsigned long) fout;
 }
 
-static u32 clk_pll_find_rate(u32 fin, u32 fout,
-					u32 *found_nf, u32 *found_nr, u32 *found_no)
+static unsigned long clk_pll_find_rate(unsigned long fin, 
+				unsigned long fout,	unsigned long *found_nf, 
+				unsigned long *found_nr, unsigned long *found_no)
 {
-	u32 nf, nr, no;
-	u32 try_fout, best_fout;
-	u32 best_nf, best_nr, best_no;
+	unsigned long nf, nr, no;
+	unsigned long try_fout, best_fout;
+	unsigned long best_nf, best_nr, best_no;
 
 	/* flag to capture the first default values */
 	best_fout = 0;
@@ -113,12 +115,12 @@ static u32 clk_pll_find_rate(u32 fin, u32 fout,
 			/* determine feedback divider to try */
 			/* avoid 64 bit / 64 bit division in kernel */
 #ifndef do_div
-			nf = (u32) ((u64) fout * nr * no / fin);
+			nf = (unsigned long) ((u64) fout * nr * no / fin);
 #else
 			{
 				u64 tmp = (u64) fout * nr * no;
 				do_div(tmp, fin);
-				nf = (u32) tmp;
+				nf = (unsigned long) tmp;
 			}
 #endif
 
@@ -199,34 +201,34 @@ static u32 clk_pll_find_rate(u32 fin, u32 fout,
 static unsigned long clk_pll_recalc_rate(struct clk_hw *hw,
 					unsigned long parent_rate)
 {
-	unsigned long rate;
+	unsigned long fout;
 	unsigned long fin = parent_rate;
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 
 	/* read the configuration register */
-	u32 pllcon = __raw_readl(pll->base);
+	unsigned long pllcon = __raw_readl(pll->base);
 
-	pr_info("pllcon reg: 0x%08x\n", pllcon);
+	pr_devel("pllcon reg: 0x%08lx\n", pllcon);
 
 	if (pllcon & BIT(16)) {
 		/* pll power down */
 		/* assume no output when powered down */
-		pr_info("pllcon power down\n");
-		rate = 0;
+		pr_devel("pllcon power down\n");
+		fout = 0;
 	} else if (pllcon & BIT(18)) {
 		/* pll output disable */
-		pr_info("pllcon disabled\n");
-		rate = 0;
+		pr_devel("pllcon disabled\n");
+		fout = 0;
 	} else if (pllcon & BIT(17)) {
 		/* pll bypass mode */
 		/* assume bypass does not work when powered down or disabled */
-		pr_info("pllcon bypass\n");
-		rate = fin;
+		pr_devel("pllcon bypass\n");
+		fout = fin;
 	} else {
 		/* fout = fin * nf / nr / no */
-		u32 nf = (pllcon & (BIT(9) - 1)) + 2;
-		u32 nr = ((pllcon >> 9) & (BIT(5) - 1)) + 2;
-		u32 no = ((pllcon >> 14) & (BIT(2) - 1));
+		unsigned long nf = (pllcon & (BIT(9) - 1)) + 2;
+		unsigned long nr = ((pllcon >> 9) & (BIT(5) - 1)) + 2;
+		unsigned long no = ((pllcon >> 14) & (BIT(2) - 1));
 		if (no == 0)
 			no = 1;
 		else if (no == 1) 
@@ -236,19 +238,19 @@ static unsigned long clk_pll_recalc_rate(struct clk_hw *hw,
 		else 
 			no = 4;
 		WARN_ON(fin % MHZ);
-		pr_info("pllcon fin: %lu nf: %lu nr: %lu no: %lu\n", fin, nf, nr, no);
-		rate = clk_pll_calc_rate(fin, nf, nr, no);
+		pr_devel("pllcon fin: %lu nf: %lu nr: %lu no: %lu\n", fin, nf, nr, no);
+		fout = clk_pll_calc_rate(fin, nf, nr, no);
 	}
 
-	pr_info("pllcon fout: %lu\n", rate);
+	pr_devel("pllcon fout: %lu\n", fout);
 
-	return rate;
+	return fout;
 }
 
 static long clk_pll_round_rate(struct clk_hw *hw, unsigned long rate,
 					unsigned long *parent_rate)
 {
-	u32 fin, fout, nearest_fout;
+	unsigned long fin, fout, nearest_fout;
 
 	/* parent rate */
 	fin = *parent_rate;
@@ -271,8 +273,8 @@ static long clk_pll_round_rate(struct clk_hw *hw, unsigned long rate,
 static int clk_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 					unsigned long parent_rate)
 {
-	u32 in_dv, out_dv, fb_dv; 
-	u32 fin, fout, best_fout, nf, nr, no, pllcon;
+	unsigned long in_dv, out_dv, fb_dv; 
+	unsigned long fin, fout, best_fout, nf, nr, no, pllcon;
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 	unsigned long flags = 0;
 
