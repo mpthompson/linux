@@ -39,7 +39,9 @@ static int clk_pll_is_enabled(struct clk_hw *hw)
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 
 	pllcon = __raw_readl(pll->base);
-	state = ~pllcon & BIT(18) ? 1 : 0;
+	state = ~pllcon & BIT(16) ? 1 : 0;	/* powered down */
+	if (state)
+		state = ~pllcon & BIT(18) ? 1 : 0; /* enabled */
 	return state;
 }
 
@@ -49,7 +51,8 @@ static int clk_pll_enable(struct clk_hw *hw)
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 
 	pllcon = __raw_readl(pll->base);
-	pllcon &= ~BIT(18);
+	pllcon &= ~BIT(18); /* enable */
+	pllcon &= ~BIT(16); /* power up */
 	__raw_writel(pllcon, pll->base);
 
 	return 0;
@@ -61,7 +64,7 @@ static void clk_pll_disable(struct clk_hw *hw)
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 
 	pllcon = __raw_readl(pll->base);
-	pllcon |= BIT(18);
+	pllcon |= BIT(18); /* disable */
 	__raw_writel(pllcon, pll->base);
 }
 
@@ -196,19 +199,33 @@ static u32 clk_pll_find_rate(u32 fin, u32 fout,
 static unsigned long clk_pll_recalc_rate(struct clk_hw *hw,
 					unsigned long parent_rate)
 {
+	unsigned long rate;
 	unsigned long fin = parent_rate;
 	struct clk_pll *pll = container_of(hw, struct clk_pll, hw);
 
 	/* read the configuration register */
 	u32 pllcon = __raw_readl(pll->base);
 
-	if (pllcon & BIT(17)) {
+	pr_info("pllcon reg: 0x%08x\n", pllcon);
+
+	if (pllcon & BIT(16)) {
+		/* pll power down */
+		/* assume no output when powered down */
+		pr_info("pllcon power down\n");
+		rate = 0;
+	} else if (pllcon & BIT(18)) {
+		/* pll output disable */
+		pr_info("pllcon disabled\n");
+		rate = 0;
+	} else if (pllcon & BIT(17)) {
 		/* pll bypass mode */
-		return fin;
+		/* assume bypass does not work when powered down or disabled */
+		pr_info("pllcon bypass\n");
+		rate = fin;
 	} else {
 		/* fout = fin * nf / nr / no */
 		u32 nf = (pllcon & (BIT(9) - 1)) + 2;
-		u32 nr = ((pllcon >> 9) & (BIT(6) - 1)) + 2;
+		u32 nr = ((pllcon >> 9) & (BIT(5) - 1)) + 2;
 		u32 no = ((pllcon >> 14) & (BIT(2) - 1));
 		if (no == 0)
 			no = 1;
@@ -219,8 +236,13 @@ static unsigned long clk_pll_recalc_rate(struct clk_hw *hw,
 		else 
 			no = 4;
 		WARN_ON(fin % MHZ);
-		return clk_pll_calc_rate(fin, nf, nr, no);
+		pr_info("pllcon fin: %lu nf: %lu nr: %lu no: %lu\n", fin, nf, nr, no);
+		rate = clk_pll_calc_rate(fin, nf, nr, no);
 	}
+
+	pr_info("pllcon fout: %lu\n", rate);
+
+	return rate;
 }
 
 static long clk_pll_round_rate(struct clk_hw *hw, unsigned long rate,
@@ -298,7 +320,7 @@ static int clk_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 		/* configure the pll control register */
 		pllcon = __raw_readl(pll->base);
 		pllcon &= ~((BIT(2) - 1) << 14);
-		pllcon &= ~((BIT(6) - 1) << 9);
+		pllcon &= ~((BIT(5) - 1) << 9);
 		pllcon &= ~(BIT(9) - 1);
 		pllcon &= ~BIT(17);
 		pllcon |= (out_dv << 14);
