@@ -449,29 +449,6 @@ static void __init n329_clocks_init(struct device_node *np)
 	pr_info("CPU clock = %lu\n", clk_get_rate(clks[cpu_clk]));
 	pr_info("AHP clock = %lu\n", clk_get_rate(clks[hclk_clk]));
 	pr_info("APB clock = %lu\n", clk_get_rate(clks[pclk_clk]));
-
-/*
-	for (i = 0; i < ARRAY_SIZE(clks); i++) {
-		pr_info("%s clock = %lu\n", clks[i].name, clk_get_rate(clks[i]));
-	}
-*/
-
-	pr_info("udiv0_clk = %lu\n", clk_get_rate(clks[udiv0_clk]));
-	pr_info("udiv1_clk = %lu\n", clk_get_rate(clks[udiv1_clk]));
-	pr_info("udiv2_clk = %lu\n", clk_get_rate(clks[udiv2_clk]));
-	pr_info("udiv3_clk = %lu\n", clk_get_rate(clks[udiv3_clk]));
-	pr_info("udiv4_clk = %lu\n", clk_get_rate(clks[udiv4_clk]));
-	pr_info("udiv5_clk = %lu\n", clk_get_rate(clks[udiv5_clk]));
-	pr_info("udiv6_clk = %lu\n", clk_get_rate(clks[udiv6_clk]));
-	pr_info("udiv7_clk = %lu\n", clk_get_rate(clks[udiv7_clk]));
-
-	pr_info("apll_clk = %lu\n", clk_get_rate(clks[apll_clk]));
-	pr_info("upll_clk = %lu\n", clk_get_rate(clks[upll_clk]));
-	pr_info("uart1_aclk = %lu\n", clk_get_rate(clks[uart1_aclk]));
-	pr_info("uart1_uclk = %lu\n", clk_get_rate(clks[uart1_uclk]));
-	pr_info("uart1_src = %lu\n", clk_get_rate(clks[uart1_src]));
-	pr_info("uart1_div = %lu\n", clk_get_rate(clks[uart1_div]));
-	pr_info("uart1_clk = %lu\n", clk_get_rate(clks[uart1_clk]));
 }
 
 CLK_OF_DECLARE(n329_clk, "nuvoton,clk", n329_clocks_init);
