@@ -279,7 +279,7 @@ static void __init n329_clocks_init(struct device_node *np)
 	clks[adc_aclk] = n329_clk_mux("adc_aclk", REG_CLKDIV3, 16, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[adc_uclk] = n329_clk_mux("adc_uclk", REG_CLKDIV3, 16, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[adc_src] = n329_clk_mux("adc_src", REG_CLKDIV3, 19, 2, sel_adc_src, ARRAY_SIZE(sel_adc_src));
-	clks[adc_div] = n329_clk_div("adc_div", "adc_src", REG_CLKDIV3, 24, 8);
+	clks[adc_div] = n329_clk_source_div("adc_div", "adc_src", REG_CLKDIV3, 24, 8, 19);
 	clks[adc_clk] = n329_clk_gate("adc_clk", "adc_div", REG_APBCLK, 0);
 
 	/* ADO (Audio) engine clock generator */
@@ -293,7 +293,7 @@ static void __init n329_clocks_init(struct device_node *np)
 	clks[vpost_aclk] = n329_clk_mux("vpost_aclk", REG_CLKDIV1, 0, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[vpost_uclk] = n329_clk_mux("vpost_uclk", REG_CLKDIV1, 0, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[vpost_src] = n329_clk_mux("vpost_src", REG_CLKDIV1, 3, 2, sel_vpost_src, ARRAY_SIZE(sel_vpost_src));
-	clks[vpost_div] = n329_clk_div("vpost_div", "vpost_src", REG_CLKDIV1, 8, 8);
+	clks[vpost_div] = n329_clk_source_div("vpost_div", "vpost_src", REG_CLKDIV1, 8, 8, 3);
 	clks[vpost_clk] = n329_clk_gate("vpost_clk", "vpost_div", REG_AHBCLK, 27);
 	clks[vpostd2_div] = n329_clk_fixed_div("vpostd2_div", "vpost_div", 2);
 	clks[vpostd2_clk] = n329_clk_gate("vpostd2_clk", "vpostd2_div", REG_AHBCLK, 27);
@@ -303,21 +303,21 @@ static void __init n329_clocks_init(struct device_node *np)
 	clks[sd_aclk] = n329_clk_mux("sd_aclk", REG_CLKDIV2, 16, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[sd_uclk] = n329_clk_mux("sd_uclk", REG_CLKDIV2, 16, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[sd_src] = n329_clk_mux("sd_src", REG_CLKDIV2, 19, 2, sel_sd_src, ARRAY_SIZE(sel_sd_src));
-	clks[sd_div] = n329_clk_div("sd_div", "sd_src", REG_CLKDIV2, 24, 8);
+	clks[sd_div] = n329_clk_source_div("sd_div", "sd_src", REG_CLKDIV2, 24, 8, 19);
 	clks[sd_clk] = n329_clk_gate("sd_clk", "sd_div", REG_AHBCLK, 23);
 
 	/* Sensor clock generator */
 	clks[sen_aclk] = n329_clk_mux("sen_aclk", REG_CLKDIV0, 16, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[sen_uclk] = n329_clk_mux("sen_uclk", REG_CLKDIV0, 16, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[sen_src] = n329_clk_mux("sen_src", REG_CLKDIV0, 19, 2, sel_sen_src, ARRAY_SIZE(sel_sen_src));
-	clks[sen_div] = n329_clk_div("sen_div", "sen_src", REG_CLKDIV0, 24, 4);
+	clks[sen_div] = n329_clk_source_div("sen_div", "sen_src", REG_CLKDIV0, 24, 4, 19);
 	clks[sen_clk] = n329_clk_gate("sen_clk", "sen_div", REG_AHBCLK, 29);
 
 	/* USB 1.1 48MHz clocks generator */
 	clks[usb_aclk] = n329_clk_mux("usb_aclk", REG_CLKDIV2, 0, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[usb_uclk] = n329_clk_mux("usb_uclk", REG_CLKDIV2, 0, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[usb_src] = n329_clk_mux("usb_src", REG_CLKDIV2, 3, 2, sel_usb_src, ARRAY_SIZE(sel_usb_src));
-	clks[usb_div] = n329_clk_div("usb_div", "usb_src", REG_CLKDIV2, 8, 4);
+	clks[usb_div] = n329_clk_source_div("usb_div", "usb_src", REG_CLKDIV2, 8, 4, 3);
 	clks[usb_clk] = n329_clk_gate("usb_clk", "usb_div", REG_AHBCLK, 17);
 	clks[usbh_hclk] = n329_clk_gate("usbh_hclk", "hclk3_clk", REG_AHBCLK, 17);
 
@@ -325,7 +325,7 @@ static void __init n329_clocks_init(struct device_node *np)
 	clks[usb20_aclk] = n329_clk_mux("usb20_aclk", REG_CLKDIV2, 5, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[usb20_uclk] = n329_clk_mux("usb20_uclk", REG_CLKDIV2, 5, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[usb20_src] = n329_clk_mux("usb20_src", REG_CLKDIV2, 21, 2, sel_usb20_src, ARRAY_SIZE(sel_usb20_src));
-	clks[usb20_div] = n329_clk_div("usb20_div", "usb20_src", REG_CLKDIV2, 12, 4);
+	clks[usb20_div] = n329_clk_source_div("usb20_div", "usb20_src", REG_CLKDIV2, 12, 4, 21);
 	clks[usb20_clk] = n329_clk_gate("usb20_clk", "usb20_div", REG_AHBCLK, 18);
 	clks[usb20_hclk] = n329_clk_gate("usb20_hclk", "hclk3_clk", REG_AHBCLK, 18);
 
@@ -333,21 +333,21 @@ static void __init n329_clocks_init(struct device_node *np)
 	clks[uart0_aclk] = n329_clk_mux("uart0_aclk", REG_CLKDIV3, 0, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[uart0_uclk] = n329_clk_mux("uart0_uclk", REG_CLKDIV3, 0, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[uart0_src] = n329_clk_mux("uart0_src", REG_CLKDIV3, 3, 2, sel_uart0_src, ARRAY_SIZE(sel_uart0_src));
-	clks[uart0_div] = n329_clk_div("uart0_div", "uart0_src", REG_CLKDIV3, 5, 3);
+	clks[uart0_div] = n329_clk_source_div("uart0_div", "uart0_src", REG_CLKDIV3, 5, 3, 3);
 	clks[uart0_clk] = n329_clk_gate("uart0_clk", "uart0_div", REG_APBCLK, 3);
 
 	/* UART 1 clock generator */
 	clks[uart1_aclk] = n329_clk_mux("uart1_aclk", REG_CLKDIV3, 8, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[uart1_uclk] = n329_clk_mux("uart1_uclk", REG_CLKDIV3, 8, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[uart1_src] = n329_clk_mux("uart1_src", REG_CLKDIV3, 11, 2, sel_uart1_src, ARRAY_SIZE(sel_uart1_src));
-	clks[uart1_div] = n329_clk_div("uart1_div", "uart1_src", REG_CLKDIV3, 13, 3);
+	clks[uart1_div] = n329_clk_source_div("uart1_div", "uart1_src", REG_CLKDIV3, 13, 3, 11);
 	clks[uart1_clk] = n329_clk_gate("uart1_clk", "uart1_div", REG_APBCLK, 4);
 
 	/* System clock generator. */
 	clks[sys_aclk] = n329_clk_mux("sys_aclk", REG_CLKDIV0, 0, 3, sel_apll, ARRAY_SIZE(sel_apll));
 	clks[sys_uclk] = n329_clk_mux("sys_uclk", REG_CLKDIV0, 0, 3, sel_upll, ARRAY_SIZE(sel_upll));
 	clks[sys_src] = n329_clk_mux("sys_src", REG_CLKDIV0, 3, 2, sel_sys_src, ARRAY_SIZE(sel_sys_src));
-	clks[sys_clk] = n329_clk_div("sys_clk", "sys_src", REG_CLKDIV0, 8, 4);
+	clks[sys_clk] = n329_clk_source_div("sys_clk", "sys_src", REG_CLKDIV0, 8, 4, 3);
 
 	/* GPIO clock generator */
 	clks[gpio_src] = n329_clk_mux("gpio_src", REG_CLKDIV4, 16, 1, sel_gpio_src, ARRAY_SIZE(sel_gpio_src));
@@ -455,6 +455,16 @@ static void __init n329_clocks_init(struct device_node *np)
 		pr_info("%s clock = %lu\n", clks[i].name, clk_get_rate(clks[i]));
 	}
 */
+
+	pr_info("udiv0_clk = %lu\n", clk_get_rate(clks[udiv0_clk]));
+	pr_info("udiv1_clk = %lu\n", clk_get_rate(clks[udiv1_clk]));
+	pr_info("udiv2_clk = %lu\n", clk_get_rate(clks[udiv2_clk]));
+	pr_info("udiv3_clk = %lu\n", clk_get_rate(clks[udiv3_clk]));
+	pr_info("udiv4_clk = %lu\n", clk_get_rate(clks[udiv4_clk]));
+	pr_info("udiv5_clk = %lu\n", clk_get_rate(clks[udiv5_clk]));
+	pr_info("udiv6_clk = %lu\n", clk_get_rate(clks[udiv6_clk]));
+	pr_info("udiv7_clk = %lu\n", clk_get_rate(clks[udiv7_clk]));
+
 	pr_info("apll_clk = %lu\n", clk_get_rate(clks[apll_clk]));
 	pr_info("upll_clk = %lu\n", clk_get_rate(clks[upll_clk]));
 	pr_info("uart1_aclk = %lu\n", clk_get_rate(clks[uart1_aclk]));
