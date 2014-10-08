@@ -141,6 +141,14 @@ static struct uart_driver n329_uart_driver;
 #define wr_regl(s, reg, val) \
 	do { __raw_writel(val, portaddr(s, reg)); } while(0)
 
+/* macros to change one thing to another */
+#define tx_enabled(s)	(s->port.unused[0])
+#define rx_enabled(s)	(s->port.unused[0])
+#define tx_disable(s)	wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) & ~UART_IER_THRI)
+#define tx_enable(s)	wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) | UART_IER_THRI | UART_IER_RTO | UART_IER_TOUT)
+#define rx_disable(s)	wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) & ~UART_IER_RDI); wr_regl(s, HW_COM_TOR, 0x00)
+#define rx_enable(s)	wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) | UART_IER_RDI | UART_IER_RTO | UART_IER_TOUT); wr_regl(s, HW_COM_TOR, 0x20)
+
 enum n329_uart_type {
 	N32905_UART
 };
@@ -148,16 +156,18 @@ enum n329_uart_type {
 #define N329_UART_FLAGS_RTSCTS	1  /* bit 1 */
 
 struct n329_uart_port {
-	struct uart_port port;
+	struct uart_port 	port;
 
 	enum n329_uart_type devtype;
 
-	unsigned long flags;
-	unsigned int ctrl;
+	unsigned long 		flags;
+	unsigned int 		ctrl;
+	unsigned char		rx_claimed;
+	unsigned char		tx_claimed;
 
-	unsigned int irq;
-	struct clk *clk;
-	struct device *dev;
+	unsigned int 		irq;
+	struct clk 			*clk;
+	struct device 		*dev;
 };
 
 #define to_n329_uart_port(u) container_of(u, struct n329_uart_port, port)
@@ -175,6 +185,150 @@ static struct of_device_id n329_uart_dt_ids[] = {
 	}, { /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, n329_uart_dt_ids);
+
+static void n329_uart_stop_tx(struct uart_port *u);
+
+#if 0
+static irqreturn_t n329_uart_tx_chars(int irq, void *dev)
+{
+	struct n329_uart_port *s = dev;
+	struct uart_port *u = &s->port;
+	struct circ_buf *xmit = &u->state->xmit;
+	int count = N329_UART_FIFO_SIZE;
+
+	if (u->x_char) {
+		wr_regb(s, HW_COM_TX, u->x_char);
+		u->icount.tx++;
+		u->x_char = 0;
+		goto out;
+	}
+
+	/* if there isnt anything more to transmit, or the uart is now
+	 * stopped, disable the uart and exit */
+	if (uart_circ_empty(xmit) || uart_tx_stopped(u)) {
+		n329_uart_stop_tx(u);
+		goto out;
+	}
+
+	/* try and drain the buffer... */
+	while (!uart_circ_empty(xmit) && (count-- > 0)) {
+		wr_regb(s, HW_COM_TX, xmit->buf[xmit->tail]);
+		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+		u->icount.tx++;
+	}
+
+	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
+		uart_write_wakeup(u);
+
+	if (uart_circ_empty(xmit))
+		n329_uart_stop_tx(u);
+
+out:
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t n329_uart_rx_chars(int irq, void *dev)
+{
+	// TBD
+	struct n329_uart_port *s = dev;
+	struct uart_port *port = &s->port;
+	struct tty_struct *tty = port->state->port.tty; //port->info->tty;
+	unsigned int isr, ch, flag, fsrstat;
+	struct w55fa93_uart_info *info = s->info;
+	irqreturn_t ret;
+
+	max_count = info->fifosize;
+
+	isr = rd_regl(port, W55FA93_COM_ISR);
+
+	if(isr & UART_ISR_THRE_INT)
+	{
+		ret = n329_uart_tx_chars(irq, dev_id);
+		return ret;
+	}
+	if(isr & UART_ISR_RDA_INT)
+		max_count = info->fifosize;
+	else if(isr & UART_ISR_Tout_INT)
+		max_count = 1;
+	else
+		return IRQ_HANDLED;
+	while ((max_count = CAN_GETC(port, isr)) > 0) {
+		fsrstat = rd_regl(port, W55FA93_COM_FSR);
+
+		if(fsrstat & UART_FSR_RFE) //1 = Rx FIFO is empty
+			break;
+
+		ch = rd_regb(port, W55FA93_COM_RX);
+
+		if (port->flags & UPF_CONS_FLOW) {
+			int txe = w55fa93_serial_txempty_nofifo(port);
+
+			if (rx_enabled(port)) {
+				if (!txe) {
+					rx_enabled(port) = 0;
+					continue;
+				}
+			} else {
+				if (txe) {
+					wr_regl(port, W55FA93_COM_FCR, rd_regl(port, W55FA93_COM_FCR) | UART_FCR_RFR);
+					rx_enabled(port) = 1;
+					goto out;
+				}
+				continue;
+			}
+		}
+
+		/* insert the character into the buffer */
+
+		flag = TTY_NORMAL;
+		port->icount.rx++;
+
+		if (unlikely(fsrstat & W55FA93_FSRSTAT_ANY)) {
+			dbg("rxerr: port ch=0x%02x, rxs=0x%08x\n",
+		    	ch, fsrstat);
+
+			/* check for break */
+			if (fsrstat & UART_FSR_BI) {
+				dbg("break!\n");
+				port->icount.brk++;
+				if (uart_handle_break(port))
+			    	goto ignore_char;
+			}
+
+			if (fsrstat & UART_FSR_FE)
+				port->icount.frame++;
+			if (fsrstat & (UART_FSR_ROE))
+				port->icount.overrun++;
+
+			fsrstat &= port->read_status_mask;
+
+			if (fsrstat & UART_FSR_BI)
+				flag = TTY_BREAK;
+			else if (fsrstat & UART_FSR_PE)
+				flag = TTY_PARITY;
+			else if (fsrstat & ( UART_FSR_FE | UART_FSR_ROE))
+				flag = TTY_FRAME;
+		}
+
+//		if (uart_handle_sysrq_char(port, ch, regs))
+		if (uart_handle_sysrq_char(port, ch))
+			goto ignore_char;
+
+		uart_insert_char(port, fsrstat, UART_FSR_ROE, ch, flag);
+
+	ignore_char:
+		continue;
+	}
+	
+
+	tty_flip_buffer_push(tty);
+
+ out:
+	return IRQ_HANDLED;
+}
+#endif
+
 
 static int n329_uart_request_port(struct uart_port *u)
 {
@@ -209,18 +363,13 @@ static void n329_uart_release_port(struct uart_port *u)
 
 static void n329_uart_set_mctrl(struct uart_port *u, unsigned mctrl)
 {
-	// XXX TBD
+	/* todo */
 }
 
 static u32 n329_uart_get_mctrl(struct uart_port *u)
 {
-	// XXX TBD
-	struct n329_uart_port *s = to_n329_uart_port(u);
-	u32 mctrl = s->ctrl;
-
-	mctrl |= TIOCM_RTS;
-
-	return mctrl;
+	/* no modem control lines */
+	return 0;
 }
 
 #define ABS_DELTA(a,b)  ((a) > (b) ? (a) - (b) : (b) - (a))
@@ -270,7 +419,7 @@ u32 n329_uart_calc_baud_register(u32 baud, u32 clock)
 		}
 	}
 
-	pr_devel("dxe=%lu dxo=%lu b=%lu a=%lu best_baud=%lu\n",
+	pr_devel("dxe=%u dxo=%u b=%u a=%u best_baud=%u\n",
 			best_dxe, best_dxo, best_b, best_a, best_baud);
 
 	return (best_dxe << 29) | (best_dxo << 28) | ((best_b - 1)<< 24) | best_a;
@@ -369,63 +518,158 @@ static void n329_uart_settermios(struct uart_port *u,
 		u->ignore_status_mask |= RXSTAT_DUMMY_READ;
 }
 
-static irqreturn_t n329_uart_irq_handle(int irq, void *context)
-{
-	// XXX TBD
-	return IRQ_HANDLED;
-}
-
 static void n329_uart_reset(struct uart_port *u)
 {
-	// XXX TBD
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	/* reset tx and rx fifos if the high-speed uart */
+	if (u->line == 0)
+		wr_regl(s, HW_COM_FCR, UART_FCR_RFR | UART_FCR_TFR | UARTx_FCR_FIFO_LEVEL14);
 }
 
 static int n329_uart_startup(struct uart_port *u)
 {
-	// XXX TBD
 	int ret;
 	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	/* TBD configure pin outputs */
 
 	ret = clk_prepare_enable(s->clk);
 	if (ret)
 		return ret;
+
+	/* request the receive irq */
+	// TBD
+/*
+	ret = request_irq(s->irq, n329_uart_rx_chars, 0, dev_name(s->dev), s);
+	if (ret)
+		return ret;
+*/
+
+	rx_enable(s);
+	rx_enabled(s) = 1;
+
+	s->rx_claimed = 1;
+	s->tx_claimed = 1;
 
 	return 0;
 }
 
 static void n329_uart_shutdown(struct uart_port *u)
 {
-	// XXX TBD
 	struct n329_uart_port *s = to_n329_uart_port(u);
+	
+	if (s->tx_claimed || s->rx_claimed) {
+		// TBD free_irq(u->irq, s);
+		clk_disable_unprepare(s->clk);
+	}
 
-	clk_disable_unprepare(s->clk);
+	if (s->tx_claimed) {	
+		tx_disable(s);
+		tx_enabled(s) = 0;
+		s->tx_claimed = 0;
+	}
+
+	if (s->rx_claimed) {
+		rx_disable(s);
+		rx_enabled(s) = 0;
+		s->rx_claimed = 0;
+	}
 }
 
 static unsigned int n329_uart_tx_empty(struct uart_port *u)
 {
-	// XXX TBD
+	struct n329_uart_port *s = to_n329_uart_port(u);
 
-	return TIOCSER_TEMT;
+	if (rd_regl(s, HW_COM_FSR) & UART_FSR_TFE)
+		return TIOCSER_TEMT;
+	else
+		return 0;
+}
+
+static void n329_uart_enable_rx(struct uart_port *u)
+{
+	unsigned int fcr;
+	unsigned long flags;
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	spin_lock_irqsave(&u->lock, flags);
+
+	fcr = rd_regl(s, HW_COM_FCR);
+	fcr |= UART_FCR_RFR | UARTx_FCR_FIFO_LEVEL14;
+	wr_regl(s, HW_COM_FCR, fcr);
+	
+	rx_enable(s);
+	rx_enabled(s) = 1;
+
+	spin_unlock_irqrestore(&u->lock, flags);
+}
+
+static void n329_uart_disable_rx(struct uart_port *u)
+{
+	unsigned long flags;
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	spin_lock_irqsave(&u->lock, flags);
+
+	rx_disable(s);
+	rx_enabled(s) = 0;
+
+	spin_unlock_irqrestore(&u->lock, flags);
 }
 
 static void n329_uart_start_tx(struct uart_port *u)
 {
-	// XXX TBD
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	if (!tx_enabled(s)) {
+		if (u->flags & UPF_CONS_FLOW)
+			n329_uart_disable_rx(u);
+		tx_enable(s);
+		tx_enabled(s) = 1;
+	}
 }
 
 static void n329_uart_stop_tx(struct uart_port *u)
 {
-	// XXX TBD
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	if (tx_enabled(s)) {
+		tx_disable(s);
+		tx_enabled(s) = 0;
+		if (u->flags & UPF_CONS_FLOW)
+			n329_uart_enable_rx(u);
+	}
 }
 
 static void n329_uart_stop_rx(struct uart_port *u)
 {
-	// XXX TBD
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	if (rx_enabled(s)) {
+		rx_disable(s);
+		rx_enabled(s) = 0;
+	}
 }
 
 static void n329_uart_break_ctl(struct uart_port *u, int ctl)
 {
-	// XXX TBD
+	unsigned int ucon;
+	unsigned long flags;
+	struct n329_uart_port *s = to_n329_uart_port(u);
+
+	spin_lock_irqsave(&u->lock, flags);
+	ucon = rd_regl(s, HW_COM_LCR);
+
+
+	if (ctl)
+		ucon |= UART_LCR_SBC;
+	else
+		ucon &= ~UART_LCR_SBC;
+
+	wr_regl(s, HW_COM_LCR, ucon);
+
+	spin_unlock_irqrestore(&u->lock, flags);
 }
 
 static void n329_uart_enable_ms(struct uart_port *port)
@@ -557,11 +801,9 @@ static int __init n329_console_setup(struct console *co, char *options)
 	int flow = 'n';
 	int ret;
 
-	/*
-	 * Check whether an invalid uart number has been specified, and
+	/* check whether an invalid uart number has been specified, and
 	 * if so, search for the first available port that does have
-	 * console support.
-	 */
+	 * console support. */
 	if (co->index == -1 || co->index >= ARRAY_SIZE(n329_uart_ports))
 		co->index = 0;
 	s = n329_uart_ports[co->index];
@@ -671,6 +913,7 @@ static int n329_uart_probe(struct platform_device *pdev)
 		goto out_free_clk;
 	}
 
+	s->ctrl = 0;
 	s->port.mapbase = r->start;
 	s->port.membase = ioremap(r->start, resource_size(r));
 	s->port.ops = &n329_uart_ops;
@@ -679,14 +922,7 @@ static int n329_uart_probe(struct platform_device *pdev)
 	s->port.uartclk = clk_get_rate(s->clk);
 	s->port.type = PORT_N329;
 	s->port.dev = s->dev = &pdev->dev;
-
-	s->ctrl = 0;
-
-	s->irq = platform_get_irq(pdev, 0);
-	s->port.irq = s->irq;
-	ret = request_irq(s->irq, n329_uart_irq_handle, 0, dev_name(&pdev->dev), s);
-	if (ret)
-		goto out_free_clk;
+	s->port.irq = s->irq = platform_get_irq(pdev, 0);
 
 	platform_set_drvdata(pdev, s);
 
