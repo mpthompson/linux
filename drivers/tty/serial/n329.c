@@ -129,6 +129,9 @@ static struct uart_driver n329_uart_driver;
 #define N329_UART_PORTS 2
 #define N329_UART_FIFO_SIZE 16         
 
+/* flag to ignore all characters comming in */
+#define RXSTAT_DUMMY_READ (0x10000000)
+
 /* register access controls */
 #define portaddr(s, reg) ((s->port.membase) + (reg))
 #define rd_regb(s, reg) (__raw_readb(portaddr(s, reg)))
@@ -220,11 +223,150 @@ static u32 n329_uart_get_mctrl(struct uart_port *u)
 	return mctrl;
 }
 
+#define ABS_DELTA(a,b)  ((a) > (b) ? (a) - (b) : (b) - (a))
+
+u32 n329_uart_calc_baud_register(u32 baud, u32 clock)
+{
+	u32 best_dxo, best_dxe, best_a, best_b, best_baud;
+	u32 test_a, test_b, test_baud;
+
+	/* default calculation */
+	best_dxo = 0;
+	best_dxe = 0;
+	best_b = 1;
+	best_a = (clock / (baud * 16)) - 2;
+	best_baud = clock / (16 * (best_a + 2));
+
+	/* can we get closer */
+	if (best_baud != baud)
+	{
+		test_a = (clock / baud) - 2;
+		test_baud = clock / (test_a + 2);
+		if ((test_a > 3) && (ABS_DELTA(baud, test_baud) < ABS_DELTA(baud, best_baud)))
+		{
+			best_dxo = 1;
+			best_dxe = 1;
+			best_b = 1;
+			best_a = test_a;
+			best_baud = test_baud;
+		}
+	}
+
+	/* can we get even closer */
+	if (best_baud != baud)
+	{
+		for (test_b = 10; test_b <= 16; ++test_b)
+		{
+			test_a = (clock / (baud * test_b)) - 2;
+			test_baud = clock / (test_b * (test_a + 2));
+			if (ABS_DELTA(baud, test_baud) <= ABS_DELTA(baud, best_baud))
+			{
+				best_dxo = 0;
+				best_dxe = 1;
+				best_b = test_b;
+				best_a = test_a;
+				best_baud = test_baud;
+			}
+		}
+	}
+
+	pr_devel("dxe=%lu dxo=%lu b=%lu a=%lu best_baud=%lu\n",
+			best_dxe, best_dxo, best_b, best_a, best_baud);
+
+	return (best_dxe << 29) | (best_dxo << 28) | ((best_b - 1)<< 24) | best_a;
+}
+
 static void n329_uart_settermios(struct uart_port *u,
 				 struct ktermios *termios,
 				 struct ktermios *old)
 {
-	// XXX TBD
+	struct n329_uart_port *s = to_n329_uart_port(u);
+	unsigned long flags;
+	u32 baud;
+	u32 lcr_register;
+	u32 baud_register;
+
+	/* update the port clock rate */
+	s->port.uartclk = clk_get_rate(s->clk);
+
+	/* we don't support modem control lines */
+	termios->c_cflag &= ~(HUPCL | CMSPAR);
+	termios->c_cflag |= CLOCAL;
+
+	/* determine the baud rate divider register contents */
+
+	/* turn the termios structure into a baud rate */
+	baud = uart_get_baud_rate(u, termios, old, 300, 115200 * 8);
+
+	/* handle a custom divider */
+	if (baud == 38400 && (u->flags & UPF_SPD_MASK) == UPF_SPD_CUST) {
+		baud_register = u->custom_divisor;
+		if (baud_register < 4)
+			baud_register = 4;
+		if (baud_register > 65535)
+			baud_register = 65535;
+		baud_register |= BIT(29) | BIT(28);
+	} else {
+		baud_register = n329_uart_calc_baud_register(baud, s->port.uartclk);
+	}
+	pr_devel("baud=%d, divider=%08x\n", baud, baud_register);
+
+	lcr_register = 0;
+	switch (termios->c_cflag & CSIZE) {
+		case CS5:
+			lcr_register = UART_LCR_WLEN5;
+			break;
+		case CS6:
+			lcr_register = UART_LCR_WLEN6;
+			break;
+		case CS7:
+			lcr_register = UART_LCR_WLEN7;
+			break;
+		case CS8:
+		default:
+			lcr_register = UART_LCR_WLEN8;
+			break;
+	}
+
+	if (termios->c_cflag & CSTOPB)
+		lcr_register |= UART_LCR_NSB;
+
+	if (termios->c_cflag & PARENB) {
+		lcr_register |= UART_LCR_PARITY;
+		if (termios->c_cflag & PARODD)
+			lcr_register |= UART_LCR_OPAR;
+		else
+			lcr_register |= UART_LCR_EPAR;
+	} else {
+		lcr_register |= UART_LCR_NPAR;
+	}
+
+	spin_lock_irqsave(&u->lock, flags);
+
+	wr_regl(s, HW_COM_BAUD, baud_register);
+	wr_regl(s, HW_COM_LCR, lcr_register);
+	wr_regl(s, HW_COM_MCR, 0x00);
+
+	spin_unlock_irqrestore(&u->lock, flags);
+
+	/* update the per-port timeout */
+	uart_update_timeout(u, termios->c_cflag, baud);
+
+	/* which character status flags are we interested in? */
+	u->read_status_mask = UART_FSR_ROE | UART_FSR_TOE;
+	if (termios->c_iflag & INPCK)
+		u->read_status_mask |= UART_FSR_FE | UART_FSR_PE;
+
+	/* which character status flags should we ignore? */
+	u->ignore_status_mask = 0;
+	if (termios->c_iflag & IGNPAR)
+		u->ignore_status_mask |= UART_FSR_ROE | UART_FSR_TOE;
+	if ((termios->c_iflag & IGNBRK) && (termios->c_iflag & IGNPAR))
+		u->ignore_status_mask |= UART_FSR_FE;
+
+	/* ignore all characters if CREAD is not set */
+	if (~termios->c_cflag & CREAD)
+		u->ignore_status_mask |= RXSTAT_DUMMY_READ;
 }
 
 static irqreturn_t n329_uart_irq_handle(int irq, void *context)
@@ -345,6 +487,67 @@ static void n329_console_write(struct console *co, const char *str,
 	clk_disable(s->clk);
 }
 
+static void __init n329_console_get_options(struct uart_port *u, 
+			int *baud, int *parity, int *bits)
+{
+	struct n329_uart_port *s = to_n329_uart_port(u);
+	u32 a, b, clock;
+	u32 lcr_register;
+	u32 baud_register;
+
+	clock = clk_get_rate(s->clk);
+
+	lcr_register = rd_regl(s, HW_COM_LCR);
+	baud_register = rd_regl(s, HW_COM_BAUD);
+
+	switch (lcr_register & UART_LCR_CSMASK)
+	{
+		case UART_LCR_WLEN5:
+			*bits = 5;
+			break;
+		case UART_LCR_WLEN6:
+			*bits = 6;
+			break;
+		case UART_LCR_WLEN7:
+			*bits = 7;
+			break;
+		default:
+		case UART_LCR_WLEN8:
+			*bits = 8;
+			break;
+	}
+	if (lcr_register & UART_LCR_PARITY)
+	{
+		switch (lcr_register & UART_LCR_PMMASK) {
+			case UART_LCR_EPAR:
+				*parity = 'e';
+				break;
+			case UART_LCR_OPAR:
+				*parity = 'o';
+				break;
+			default:
+				*parity = 'n';
+		}
+	}
+	else
+		*parity = 'n';
+
+	b = 16;
+	a = baud_register & 0xffff;	
+
+	if (baud_register & BIT(29)) {
+		if (baud_register & BIT(29)) {
+			b = 1;
+		} else {
+			b = ((baud_register >> 24) & 0xf) + 1;
+		}
+	}
+
+	*baud = clock / (b * (a + 2));
+
+	pr_info("calculated baud %d\n", *baud);
+}
+
 static int __init n329_console_setup(struct console *co, char *options)
 {
 	struct n329_uart_port *s;
@@ -369,13 +572,10 @@ static int __init n329_console_setup(struct console *co, char *options)
 	if (ret)
 	 	return ret;
 
-	/*
-	// XXX TBD
 	if (options)
 		uart_parse_options(options, &baud, &parity, &bits, &flow);
 	else
-		auart_console_get_options(&s->port, &baud, &parity, &bits);
-	*/
+		n329_console_get_options(&s->port, &baud, &parity, &bits);
 
 	ret = uart_set_options(&s->port, co, baud, parity, bits, flow);
 
