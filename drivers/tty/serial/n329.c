@@ -33,98 +33,102 @@
 
 static struct uart_driver n329_uart_driver;
 
-#define HW_COM_TX		0x00
-#define HW_COM_RX		0x00
-#define HW_COM_IER		0x04
-#define HW_COM_FCR		0x08
-#define HW_COM_LCR		0x0C
-#define HW_COM_MCR		0x10
-#define HW_COM_MSR		0x14
-#define HW_COM_FSR		0x18
-#define HW_COM_ISR		0x1C
-#define HW_COM_TOR		0x20
-#define HW_COM_BAUD		0x24
+#define HW_COM_TX       0x00
+#define HW_COM_RX       0x00
+#define HW_COM_IER      0x04
+#define HW_COM_FCR      0x08
+#define HW_COM_LCR      0x0C
+#define HW_COM_MCR      0x10
+#define HW_COM_MSR      0x14
+#define HW_COM_FSR      0x18
+#define HW_COM_ISR      0x1C
+#define HW_COM_TOR      0x20
+#define HW_COM_BAUD     0x24
 
-#define UARTx_FCR_FIFO_LEVEL1	0x00
-#define UARTx_FCR_FIFO_LEVEL4	0x10
-#define UARTx_FCR_FIFO_LEVEL8	0x20
-#define UARTx_FCR_FIFO_LEVEL14	0x30
-#define UARTx_FCR_FIFO_LEVEL30	0x40
-#define UARTx_FCR_FIFO_LEVEL46	0x50
-#define UARTx_FCR_FIFO_LEVEL62	0x60
+#define UARTx_FCR_FIFO_LEVEL1   0x00
+#define UARTx_FCR_FIFO_LEVEL4   0x10
+#define UARTx_FCR_FIFO_LEVEL8   0x20
+#define UARTx_FCR_FIFO_LEVEL14  0x30
+#define UARTx_FCR_FIFO_LEVEL30  0x40
+#define UARTx_FCR_FIFO_LEVEL46  0x50
+#define UARTx_FCR_FIFO_LEVEL62  0x60
 
-#define UART_FCR_RFR			0x02
-#define UART_FCR_TFR			0x04
+#define UART_FCR_RFR            0x02
+#define UART_FCR_TFR            0x04
 
-#define UART_TXRXFIFO_RESET	(UART_FCR_RFR | UART_FCR_TFR)
+#define UART_TXRXFIFO_RESET (UART_FCR_RFR | UART_FCR_TFR)
 
-#define UART_FSR_ROE			0x00000000		// Rx Overrun error
-#define UART_FSR_PE				0x00000010		// Parity error
-#define UART_FSR_FE				0x00000020		// Frame error
-#define UART_FSR_BI				0x00000040		// Break interrupt
-#define UART_FSR_RFE			0x00004000		// Rx FIFO empty
-#define UART_FSR_RFF			0x00008000		// Rx FIFO full
-#define UART_FSR_RPMASK			(0x00003F00)	// Rx FIFO pointer
-#define UART_FSR_TFE			0x00400000		// Tx FIFO empty
-#define UART_FSR_TFF			0x00800000		// Tx FIFO full
-#define UART_FSR_TPMASK			(0x003F0000)	// Tx FIFO pointer
-#define UART_FSR_TOE			0x01000000		// Tx Overrun error
-#define UART_FSR_TEMT			0x10000000		// Transmitter empty
-	
-#define UART_LCR_WLEN5			0x00
-#define UART_LCR_WLEN6			0x01
-#define UART_LCR_WLEN7			0x02
-#define UART_LCR_WLEN8			0x03
-#define UART_LCR_CSMASK			(0x3)
-#define UART_LCR_PARITY			0x08
-#define UART_LCR_NPAR			0x00
-#define UART_LCR_OPAR			0x00
-#define UART_LCR_EPAR			0x10
-#define UART_LCR_PMMASK			(0x30)
-#define UART_LCR_SPAR			0x20
-#define UART_LCR_SBC			0x40
-#define UART_LCR_NSB			0x00
-#define UART_LCR_NSB1_5			0x04
+#define UART_FSR_ROE            0x00000000      // Rx Overrun error
+#define UART_FSR_PE             0x00000010      // Parity error
+#define UART_FSR_FE             0x00000020      // Frame error
+#define UART_FSR_BI             0x00000040      // Break interrupt
+#define UART_FSR_RFE            0x00004000      // Rx FIFO empty
+#define UART_FSR_RFF            0x00008000      // Rx FIFO full
+#define UART_FSR_RPMASK         (0x00003F00)    // Rx FIFO pointer
+#define UART_FSR_TFE            0x00400000      // Tx FIFO empty
+#define UART_FSR_TFF            0x00800000      // Tx FIFO full
+#define UART_FSR_TPMASK         (0x003F0000)    // Tx FIFO pointer
+#define UART_FSR_TOE            0x01000000      // Tx Overrun error
+#define UART_FSR_TEMT           0x10000000      // Transmitter empty
 
-#define UART_IER_TOUT			BIT(11)
-#define UART_IER_RTO			BIT(4)
-#define UART_IER_MSI			BIT(3)
-#define UART_IER_RLSI			BIT(2)
-#define UART_IER_THRI			BIT(1)
-#define UART_IER_RDI			BIT(0)
+#define UART_FSRSTAT_ANY (UART_FSR_ROE | UART_FSR_TOE | UART_FSR_FE | UART_FSR_BI)
 
-#define UART_ISR_EDMA_RX_Flag	BIT(31)		// EDMA RX Mode Flag
-#define UART_ISR_HW_Wake_INT	BIT(30)		// Wake up Interrupt pin status
-#define UART_ISR_HW_Buf_Err_INT	BIT(29)		// Buffer Error Interrupt pin status
-#define UART_ISR_HW_Tout_INT	BIT(28)		// Time out Interrupt pin status
-#define UART_ISR_HW_Modem_INT	BIT(27)		// MODEM Status Interrupt pin status
-#define UART_ISR_HW_RLS_INT		BIT(26)		// Receive Line Status Interrupt pin status
-#define UART_ISR_Rx_ack_st		BIT(25)		// TX ack pin status
-#define UART_ISR_Rx_req_St		BIT(24)		// TX req pin status
-#define UART_ISR_EDMA_TX_Flag	BIT(23)		// EDMA TX Mode Flag
-#define UART_ISR_HW_Wake_IF		BIT(22)		// Wake up Flag
-#define UART_ISR_HW_Buf_Err_IF	BIT(21)		// Buffer Error Flag
-#define UART_ISR_HW_Tout_IF		BIT(20)		// Time out Flag
-#define UART_ISR_HW_Modem_IF	BIT(19)		// MODEM Status Flag
-#define UART_ISR_HW_RLS_IF		BIT(18)		// Receive Line Status Flag
-#define UART_ISR_Tx_ack_st		BIT(17)		// TX ack pin status
-#define UART_ISR_Tx_req_St		BIT(16)		// TX req pin status
-#define UART_ISR_Soft_RX_Flag	BIT(15)		// Software RX Mode Flag
-#define UART_ISR_Wake_INT		BIT(14)		// Wake up Interrupt pin status
-#define UART_ISR_Buf_Err_INT	BIT(13)		// Buffer Error Interrupt pin status
-#define UART_ISR_Tout_INT		BIT(12)		// Time out interrupt Interrupt pin status
-#define UART_ISR_Modem_INT		BIT(11)		// MODEM Status Interrupt pin status
-#define UART_ISR_RLS_INT		BIT(10)		// Receive Line Status Interrupt pin status
-#define UART_ISR_THRE_INT		BIT(9)		// Transmit Holding Register Empty Interrupt pin status
-#define UART_ISR_RDA_INT		BIT(8)		// Receive Data Available Interrupt pin status
-#define UART_ISR_Soft_TX_Flag	BIT(7)		// Software TX Mode Flag
-#define UART_ISR_Wake_IF		BIT(6)		// Wake up Flag
-#define UART_ISR_Buf_Err_IF		BIT(5)		// Buffer Error Flag
-#define UART_ISR_Tout_IF		BIT(4)		// Time out interrupt Flag
-#define UART_ISR_Modem_IF		BIT(3)		// MODEM Status Flag
-#define UART_ISR_RLS_IF			BIT(2)		// Receive Line Status Flag
-#define UART_ISR_THRE_IF		BIT(1)		// Transmit Holding Register Empty Flag
-#define UART_ISR_RDA_IF			BIT(0)		// Receive Data Available Flag
+#define UART_LCR_WLEN5          0x00
+#define UART_LCR_WLEN6          0x01
+#define UART_LCR_WLEN7          0x02
+#define UART_LCR_WLEN8          0x03
+#define UART_LCR_CSMASK         (0x3)
+#define UART_LCR_PARITY         0x08
+#define UART_LCR_NPAR           0x00
+#define UART_LCR_OPAR           0x00
+#define UART_LCR_EPAR           0x10
+#define UART_LCR_PMMASK         (0x30)
+#define UART_LCR_SPAR           0x20
+#define UART_LCR_SBC            0x40
+#define UART_LCR_NSB            0x00
+#define UART_LCR_NSB1_5         0x04
+
+#define UART_IER_CTS_EN         BIT(13)     // CTS auto flow control enable
+#define UART_IER_RTS_EN         BIT(12)     // RTS auto flow control enable
+#define UART_IER_TOUT_EN        BIT(11)     // Time output counter enable
+#define UART_IER_RTO            BIT(4)      // Receive time out interrupt enable
+#define UART_IER_MS             BIT(3)      // Modem status interrupt enable
+#define UART_IER_RLS            BIT(2)      // Receive line status interrupt enable
+#define UART_IER_THRE           BIT(1)      // Transmit hold register empty interrupt enable
+#define UART_IER_RDA            BIT(0)      // Receive data available interrupt enable
+
+#define UART_ISR_EDMA_RX_Flag   BIT(31)     // EDMA RX Mode Flag
+#define UART_ISR_HW_Wake_INT    BIT(30)     // Wake up Interrupt pin status
+#define UART_ISR_HW_Buf_Err_INT BIT(29)     // Buffer Error Interrupt pin status
+#define UART_ISR_HW_Tout_INT    BIT(28)     // Time out Interrupt pin status
+#define UART_ISR_HW_Modem_INT   BIT(27)     // MODEM Status Interrupt pin status
+#define UART_ISR_HW_RLS_INT     BIT(26)     // Receive Line Status Interrupt pin status
+#define UART_ISR_Rx_ack_st      BIT(25)     // TX ack pin status
+#define UART_ISR_Rx_req_St      BIT(24)     // TX req pin status
+#define UART_ISR_EDMA_TX_Flag   BIT(23)     // EDMA TX Mode Flag
+#define UART_ISR_HW_Wake_IF     BIT(22)     // Wake up Flag
+#define UART_ISR_HW_Buf_Err_IF  BIT(21)     // Buffer Error Flag
+#define UART_ISR_HW_Tout_IF     BIT(20)     // Time out Flag
+#define UART_ISR_HW_Modem_IF    BIT(19)     // MODEM Status Flag
+#define UART_ISR_HW_RLS_IF      BIT(18)     // Receive Line Status Flag
+#define UART_ISR_Tx_ack_st      BIT(17)     // TX ack pin status
+#define UART_ISR_Tx_req_St      BIT(16)     // TX req pin status
+#define UART_ISR_Soft_RX_Flag   BIT(15)     // Software RX Mode Flag
+#define UART_ISR_Wake_INT       BIT(14)     // Wake up Interrupt pin status
+#define UART_ISR_Buf_Err_INT    BIT(13)     // Buffer Error Interrupt pin status
+#define UART_ISR_Tout_INT       BIT(12)     // Time out interrupt Interrupt pin status
+#define UART_ISR_Modem_INT      BIT(11)     // MODEM Status Interrupt pin status
+#define UART_ISR_RLS_INT        BIT(10)     // Receive Line Status Interrupt pin status
+#define UART_ISR_THRE_INT       BIT(9)      // Transmit Holding Register Empty Interrupt pin status
+#define UART_ISR_RDA_INT        BIT(8)      // Receive Data Available Interrupt pin status
+#define UART_ISR_Soft_TX_Flag   BIT(7)      // Software TX Mode Flag
+#define UART_ISR_Wake_IF        BIT(6)      // Wake up Flag
+#define UART_ISR_Buf_Err_IF     BIT(5)      // Buffer Error Flag
+#define UART_ISR_Tout_IF        BIT(4)      // Time out interrupt Flag
+#define UART_ISR_Modem_IF       BIT(3)      // MODEM Status Flag
+#define UART_ISR_RLS_IF         BIT(2)      // Receive Line Status Flag
+#define UART_ISR_THRE_IF        BIT(1)      // Transmit Holding Register Empty Flag
+#define UART_ISR_RDA_IF         BIT(0)      // Receive Data Available Flag
 
 #define N329_UART_PORTS 2
 #define N329_UART_FIFO_SIZE 16         
@@ -142,32 +146,32 @@ static struct uart_driver n329_uart_driver;
 	do { __raw_writel(val, portaddr(s, reg)); } while(0)
 
 /* macros to change one thing to another */
-#define tx_enabled(s)	(s->port.unused[0])
-#define rx_enabled(s)	(s->port.unused[0])
-#define tx_disable(s)	wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) & ~UART_IER_THRI)
-#define tx_enable(s)	wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) | UART_IER_THRI | UART_IER_RTO | UART_IER_TOUT)
-#define rx_disable(s)	wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) & ~UART_IER_RDI); wr_regl(s, HW_COM_TOR, 0x00)
-#define rx_enable(s)	wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) | UART_IER_RDI | UART_IER_RTO | UART_IER_TOUT); wr_regl(s, HW_COM_TOR, 0x20)
+#define tx_enabled(s)   (s->port.unused[0])
+#define rx_enabled(s)   (s->port.unused[0])
+#define tx_disable(s)   wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) & ~UART_IER_THRE)
+#define tx_enable(s)    wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) | UART_IER_THRE | UART_IER_RTO | UART_IER_TOUT_EN)
+#define rx_disable(s)   wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) & ~UART_IER_RDA); wr_regl(s, HW_COM_TOR, 0x00)
+#define rx_enable(s)    wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) | UART_IER_RDA | UART_IER_RTO | UART_IER_TOUT_EN); wr_regl(s, HW_COM_TOR, 0x20)
 
 enum n329_uart_type {
 	N32905_UART
 };
 
-#define N329_UART_FLAGS_RTSCTS	1  /* bit 1 */
+#define N329_UART_FLAGS_RTSCTS  1  /* bit 1 */
 
 struct n329_uart_port {
-	struct uart_port 	port;
+	struct uart_port    port;
 
 	enum n329_uart_type devtype;
 
-	unsigned long 		flags;
-	unsigned int 		ctrl;
-	unsigned char		rx_claimed;
-	unsigned char		tx_claimed;
+	unsigned long       flags;
+	unsigned int        ctrl;
+	unsigned char       rx_claimed;
+	unsigned char       tx_claimed;
 
-	unsigned int 		irq;
-	struct clk 			*clk;
-	struct device 		*dev;
+	unsigned int        irq;
+	struct clk          *clk;
+	struct device       *dev;
 };
 
 #define to_n329_uart_port(u) container_of(u, struct n329_uart_port, port)
@@ -188,147 +192,117 @@ MODULE_DEVICE_TABLE(of, n329_uart_dt_ids);
 
 static void n329_uart_stop_tx(struct uart_port *u);
 
-#if 0
-static irqreturn_t n329_uart_tx_chars(int irq, void *dev)
+static irqreturn_t
+n329_uart_irq_handler(int irq, void *dev)
 {
 	struct n329_uart_port *s = dev;
 	struct uart_port *u = &s->port;
 	struct circ_buf *xmit = &u->state->xmit;
-	int count = N329_UART_FIFO_SIZE;
+	struct tty_port *tty = &u->state->port;
+	unsigned int ch, flag;
+	unsigned int isr_reg, fsr_reg; 
+	unsigned int max_count, process_character;
 
-	if (u->x_char) {
-		wr_regb(s, HW_COM_TX, u->x_char);
-		u->icount.tx++;
-		u->x_char = 0;
-		goto out;
-	}
+	/* get the interrupt status register */
+	isr_reg = rd_regl(s, HW_COM_ISR);
 
-	/* if there isnt anything more to transmit, or the uart is now
-	 * stopped, disable the uart and exit */
-	if (uart_circ_empty(xmit) || uart_tx_stopped(u)) {
-		n329_uart_stop_tx(u);
-		goto out;
-	}
-
-	/* try and drain the buffer... */
-	while (!uart_circ_empty(xmit) && (count-- > 0)) {
-		wr_regb(s, HW_COM_TX, xmit->buf[xmit->tail]);
-		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-		u->icount.tx++;
-	}
-
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
-		uart_write_wakeup(u);
-
-	if (uart_circ_empty(xmit))
-		n329_uart_stop_tx(u);
-
-out:
-
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t n329_uart_rx_chars(int irq, void *dev)
-{
-	// TBD
-	struct n329_uart_port *s = dev;
-	struct uart_port *port = &s->port;
-	struct tty_struct *tty = port->state->port.tty; //port->info->tty;
-	unsigned int isr, ch, flag, fsrstat;
-	struct w55fa93_uart_info *info = s->info;
-	irqreturn_t ret;
-
-	max_count = info->fifosize;
-
-	isr = rd_regl(port, W55FA93_COM_ISR);
-
-	if(isr & UART_ISR_THRE_INT)
+	/* first test for transmit holding register empty */
+	if (isr_reg & UART_ISR_THRE_INT)
 	{
-		ret = n329_uart_tx_chars(irq, dev_id);
-		return ret;
-	}
-	if(isr & UART_ISR_RDA_INT)
-		max_count = info->fifosize;
-	else if(isr & UART_ISR_Tout_INT)
-		max_count = 1;
-	else
-		return IRQ_HANDLED;
-	while ((max_count = CAN_GETC(port, isr)) > 0) {
-		fsrstat = rd_regl(port, W55FA93_COM_FSR);
+		/* we can't send more than the size of the fifo */
+		int max_count = N329_UART_FIFO_SIZE;
 
-		if(fsrstat & UART_FSR_RFE) //1 = Rx FIFO is empty
-			break;
-
-		ch = rd_regb(port, W55FA93_COM_RX);
-
-		if (port->flags & UPF_CONS_FLOW) {
-			int txe = w55fa93_serial_txempty_nofifo(port);
-
-			if (rx_enabled(port)) {
-				if (!txe) {
-					rx_enabled(port) = 0;
-					continue;
+		/* xon/xoff characters have priority */
+		if (u->x_char) {
+			wr_regb(s, HW_COM_TX, u->x_char);
+			u->icount.tx++;
+			u->x_char = 0;
+		} else {
+			/* can we transmit? */          
+			if (uart_tx_stopped(u))
+				n329_uart_stop_tx(u);
+			else {
+				/* empty the circular buffer without overflowing the uart */
+				while (!uart_circ_empty(xmit) && (max_count-- > 0)) {
+					wr_regb(s, HW_COM_TX, xmit->buf[xmit->tail]);
+					xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+					u->icount.tx++;
 				}
-			} else {
-				if (txe) {
-					wr_regl(port, W55FA93_COM_FCR, rd_regl(port, W55FA93_COM_FCR) | UART_FCR_RFR);
-					rx_enabled(port) = 1;
-					goto out;
-				}
-				continue;
+
+				if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
+					uart_write_wakeup(u);
+
+				if (uart_circ_empty(xmit))
+					n329_uart_stop_tx(u);
 			}
 		}
+	} else if (isr_reg & UART_ISR_RDA_INT) {
+		/* we can't read more than the size of the fifo */
+		max_count = N329_UART_FIFO_SIZE;
 
-		/* insert the character into the buffer */
-
-		flag = TTY_NORMAL;
-		port->icount.rx++;
-
-		if (unlikely(fsrstat & W55FA93_FSRSTAT_ANY)) {
-			dbg("rxerr: port ch=0x%02x, rxs=0x%08x\n",
-		    	ch, fsrstat);
-
-			/* check for break */
-			if (fsrstat & UART_FSR_BI) {
-				dbg("break!\n");
-				port->icount.brk++;
-				if (uart_handle_break(port))
-			    	goto ignore_char;
-			}
-
-			if (fsrstat & UART_FSR_FE)
-				port->icount.frame++;
-			if (fsrstat & (UART_FSR_ROE))
-				port->icount.overrun++;
-
-			fsrstat &= port->read_status_mask;
-
-			if (fsrstat & UART_FSR_BI)
-				flag = TTY_BREAK;
-			else if (fsrstat & UART_FSR_PE)
-				flag = TTY_PARITY;
-			else if (fsrstat & ( UART_FSR_FE | UART_FSR_ROE))
-				flag = TTY_FRAME;
-		}
-
-//		if (uart_handle_sysrq_char(port, ch, regs))
-		if (uart_handle_sysrq_char(port, ch))
-			goto ignore_char;
-
-		uart_insert_char(port, fsrstat, UART_FSR_ROE, ch, flag);
-
-	ignore_char:
-		continue;
-	}
+		while (max_count-- > 0) {
+			/* get fifo status register */
+			fsr_reg = rd_regl(s, HW_COM_FSR);
 	
+			/* stop if the receive register empty */
+			if (fsr_reg & UART_FSR_RFE)
+				break;
 
-	tty_flip_buffer_push(tty);
+			/* get the next character in the fifo */	
+			ch = rd_regb(s, HW_COM_RX);
 
- out:
+			/* insert the character into the buffer */
+			flag = TTY_NORMAL;
+			u->icount.rx++;
+			process_character = 1;
+
+			/* process a break */
+			if (fsr_reg & UART_FSR_BI) {
+				u->icount.brk++;
+				if (uart_handle_break(u))
+					process_character = 0;
+			}
+
+			/* process receive errors */
+			if (unlikely(fsr_reg & UART_FSRSTAT_ANY)) {
+				if (fsr_reg & UART_FSR_FE)
+					u->icount.frame++;
+				if (fsr_reg & (UART_FSR_ROE))
+					u->icount.overrun++;
+
+				fsr_reg &= u->read_status_mask;
+				if (fsr_reg & UART_FSR_BI)
+					flag = TTY_BREAK;
+				else if (fsr_reg & UART_FSR_PE)
+					flag = TTY_PARITY;
+				else if (fsr_reg & ( UART_FSR_FE | UART_FSR_ROE))
+					flag = TTY_FRAME;
+			}
+
+			if (uart_handle_sysrq_char(u, ch))
+				process_character = 0;
+
+			if (process_character)
+				uart_insert_char(u, fsr_reg, UART_FSR_ROE, ch, flag);
+		}
+
+		tty_flip_buffer_push(tty);
+	} else if (isr_reg & UART_ISR_Tout_INT) {
+		/* get fifo status register */
+		fsr_reg = rd_regl(s, HW_COM_FSR);
+
+		/* process a break */
+		if (fsr_reg & UART_FSR_BI) {
+			u->icount.brk++;
+			uart_handle_break(u);
+		}
+
+		/* rx software reset */
+		wr_regl(s, HW_COM_FCR, rd_regl(s, HW_COM_FCR) | UART_FCR_RFR);
+	}
+
 	return IRQ_HANDLED;
 }
-#endif
-
 
 static int n329_uart_request_port(struct uart_port *u)
 {
@@ -337,7 +311,7 @@ static int n329_uart_request_port(struct uart_port *u)
 }
 
 static int n329_uart_verify_port(struct uart_port *u,
-				    struct serial_struct *ser)
+					struct serial_struct *ser)
 {
 	if (u->type != PORT_UNKNOWN && u->type != PORT_N329)
 		return -EINVAL;
@@ -539,12 +513,9 @@ static int n329_uart_startup(struct uart_port *u)
 		return ret;
 
 	/* request the receive irq */
-	// TBD
-/*
-	ret = request_irq(s->irq, n329_uart_rx_chars, 0, dev_name(s->dev), s);
+	ret = request_irq(s->irq, n329_uart_irq_handler, 0, dev_name(s->dev), s);
 	if (ret)
 		return ret;
-*/
 
 	rx_enable(s);
 	rx_enabled(s) = 1;
@@ -564,7 +535,7 @@ static void n329_uart_shutdown(struct uart_port *u)
 		clk_disable_unprepare(s->clk);
 	}
 
-	if (s->tx_claimed) {	
+	if (s->tx_claimed) {    
 		tx_disable(s);
 		tx_enabled(s) = 0;
 		s->tx_claimed = 0;
@@ -587,6 +558,7 @@ static unsigned int n329_uart_tx_empty(struct uart_port *u)
 		return 0;
 }
 
+#if 0
 static void n329_uart_enable_rx(struct uart_port *u)
 {
 	unsigned int fcr;
@@ -617,16 +589,19 @@ static void n329_uart_disable_rx(struct uart_port *u)
 
 	spin_unlock_irqrestore(&u->lock, flags);
 }
+#endif
 
 static void n329_uart_start_tx(struct uart_port *u)
 {
 	struct n329_uart_port *s = to_n329_uart_port(u);
 
 	if (!tx_enabled(s)) {
-		if (u->flags & UPF_CONS_FLOW)
-			n329_uart_disable_rx(u);
 		tx_enable(s);
 		tx_enabled(s) = 1;
+#if 0
+		if (u->flags & UPF_CONS_FLOW)
+			n329_uart_disable_rx(u);
+#endif
 	}
 }
 
@@ -637,8 +612,10 @@ static void n329_uart_stop_tx(struct uart_port *u)
 	if (tx_enabled(s)) {
 		tx_disable(s);
 		tx_enabled(s) = 0;
+#if 0
 		if (u->flags & UPF_CONS_FLOW)
 			n329_uart_enable_rx(u);
+#endif
 	}
 }
 
@@ -777,7 +754,7 @@ static void __init n329_console_get_options(struct uart_port *u,
 		*parity = 'n';
 
 	b = 16;
-	a = baud_register & 0xffff;	
+	a = baud_register & 0xffff; 
 
 	if (baud_register & BIT(29)) {
 		if (baud_register & BIT(29)) {
@@ -812,7 +789,7 @@ static int __init n329_console_setup(struct console *co, char *options)
 
 	ret = clk_prepare_enable(s->clk);
 	if (ret)
-	 	return ret;
+		return ret;
 
 	if (options)
 		uart_parse_options(options, &baud, &parity, &bits, &flow);
@@ -827,25 +804,25 @@ static int __init n329_console_setup(struct console *co, char *options)
 }
 
 static struct console n329_uart_console = {
-	.name			= "ttyS",
-	.write			= n329_console_write,
-	.device			= uart_console_device,
-	.setup			= n329_console_setup,
-	.flags			= CON_PRINTBUFFER,
-	.index			= -1,
-	.data			= &n329_uart_driver,
+	.name           = "ttyS",
+	.write          = n329_console_write,
+	.device         = uart_console_device,
+	.setup          = n329_console_setup,
+	.flags          = CON_PRINTBUFFER,
+	.index          = -1,
+	.data           = &n329_uart_driver,
 };
 #endif
 
 static struct uart_driver n329_uart_driver = {
-	.owner			= THIS_MODULE,
-	.driver_name	= "ttyS",
-	.dev_name		= "ttyS",
-	.major			= 0,
-	.minor			= 0,
-	.nr				= N329_UART_PORTS,
+	.owner          = THIS_MODULE,
+	.driver_name    = "ttyS",
+	.dev_name       = "ttyS",
+	.major          = 0,
+	.minor          = 0,
+	.nr             = N329_UART_PORTS,
 #ifdef CONFIG_SERIAL_N329_UART_CONSOLE
-	.cons =			&n329_uart_console,
+	.cons =         &n329_uart_console,
 #endif
 };
 
