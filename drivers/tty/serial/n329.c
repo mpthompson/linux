@@ -337,13 +337,13 @@ static void n329_uart_release_port(struct uart_port *u)
 
 static void n329_uart_set_mctrl(struct uart_port *u, unsigned mctrl)
 {
-	/* todo */
+	/* not supported by this driver */
 }
 
 static u32 n329_uart_get_mctrl(struct uart_port *u)
 {
-	/* no modem control lines */
-	return 0;
+	/* report CTS, DCD or DSR as active, RI as inactive */
+	return TIOCM_CAR | TIOCM_DSR | TIOCM_CTS;
 }
 
 #define ABS_DELTA(a,b)  ((a) > (b) ? (a) - (b) : (b) - (a))
@@ -631,19 +631,17 @@ static void n329_uart_stop_rx(struct uart_port *u)
 
 static void n329_uart_break_ctl(struct uart_port *u, int ctl)
 {
+	struct n329_uart_port *s = to_n329_uart_port(u);
 	unsigned int ucon;
 	unsigned long flags;
-	struct n329_uart_port *s = to_n329_uart_port(u);
 
 	spin_lock_irqsave(&u->lock, flags);
+
 	ucon = rd_regl(s, HW_COM_LCR);
-
-
 	if (ctl)
 		ucon |= UART_LCR_SBC;
 	else
 		ucon &= ~UART_LCR_SBC;
-
 	wr_regl(s, HW_COM_LCR, ucon);
 
 	spin_unlock_irqrestore(&u->lock, flags);
