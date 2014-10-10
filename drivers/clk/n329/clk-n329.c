@@ -222,9 +222,21 @@ enum n329_clk {
 static struct clk *clks[clk_max];
 static struct clk_onecell_data clk_data;
 
+/* clocks needed for basic system operation */
 static enum n329_clk clks_init_on[] __initdata = {
-	cpu_clk, pclk_clk, hclk_clk, sram_clk, ddr_clk, hclk1_clk,
-	timer0_pclk, wdt_pclk, uart1_pclk, uart1_clk
+	xtal_clk, rtx_clk, apll_clk, upll_clk, reserved_clk,
+	adiv0_clk, adiv1_clk, adiv2_clk, adiv3_clk, 
+	adiv4_clk, adiv5_clk, adiv6_clk, adiv7_clk,
+	udiv0_clk, udiv1_clk, udiv2_clk, udiv3_clk, 
+	udiv4_clk, udiv5_clk, udiv6_clk, udiv7_clk,
+	uart1_aclk, uart1_uclk, uart1_src, uart1_div, uart1_clk,
+	sys_aclk, sys_uclk, sys_src, sys_clk,
+	gpio_src, gpio_div, gpio_clk,
+	cpu_div, cpu_clk,
+	hclk_div, hclk1_div, hclk234_div, hclk_clk,
+	hclk1_clk, hclk2_clk, hclk3_clk, hclk4_clk,
+	dram_clk, sram_clk, ddr_clk,
+	pclk_div, pclk_clk, uart1_pclk
 };
 
 static void __init n329_clocks_init(struct device_node *np)
