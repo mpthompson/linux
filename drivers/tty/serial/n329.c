@@ -147,7 +147,7 @@ static struct uart_driver n329_uart_driver;
 
 /* macros to change one thing to another */
 #define tx_enabled(s)   (s->port.unused[0])
-#define rx_enabled(s)   (s->port.unused[0])
+#define rx_enabled(s)   (s->port.unused[1])
 #define tx_disable(s)   wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) & ~UART_IER_THRE)
 #define tx_enable(s)    wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) | UART_IER_THRE | UART_IER_RTO | UART_IER_TOUT_EN)
 #define rx_disable(s)   wr_regl(s, HW_COM_IER, rd_regl(s, HW_COM_IER) & ~UART_IER_RDA); wr_regl(s, HW_COM_TOR, 0x00)
