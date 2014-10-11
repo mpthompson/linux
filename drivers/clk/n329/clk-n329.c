@@ -418,7 +418,7 @@ static void __init n329_clocks_init(struct device_node *np)
 	/* other HCLK4 derived clocks */
 	clks[spu_hclk] = n329_clk_gate("spu_hclk", "hclk4_clk", REG_AHBCLK, 25);
 	clks[i2s_hclk] = n329_clk_gate("i2s_hclk", "hclk4_clk", REG_AHBCLK, 26);
-	clks[spu1_clk] = n329_clk_gate("spu1_clk", "reserved", REG_AHBCLK, 31);
+	clks[spu1_clk] = n329_clk_gate("spu1_clk", "hclk4_clk", REG_AHBCLK, 31);
 
 	/* APB clocks */
 	clks[pclk_div] = n329_clk_div("pclk_div", "hclk1_clk", REG_CLKDIV4, 8, 4);
