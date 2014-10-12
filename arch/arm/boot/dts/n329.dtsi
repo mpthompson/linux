@@ -17,6 +17,7 @@
  */
 
 #include "skeleton.dtsi"
+#include "n32905-pinfunc.h"
 
 / {
 	compatible = "nuvoton,n329";
@@ -48,6 +49,72 @@
 		gcr@B0000000 {
 			compatible = "nuvoton,gcr";
 			reg = <0xB0000000 0x200>;
+		};
+
+		pinctrl@B0000000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "nuvoton,n32905-pinctrl";
+			reg = <0xB0000000 0x200 0xB8001000 0x100>;
+
+			gpio0: gpio@0 {
+				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
+				gpio-controller;
+				#gpio-cells = <1>;
+			};
+
+			gpio1: gpio@1 {
+				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
+				gpio-controller;
+				#gpio-cells = <1>;
+			};
+
+			gpio2: gpio@2 {
+				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
+				gpio-controller;
+				#gpio-cells = <1>;
+			};
+
+			gpio3: gpio@3 {
+				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
+				gpio-controller;
+				#gpio-cells = <1>;
+			};
+
+			gpio4: gpio@4 {
+				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
+				gpio-controller;
+				#gpio-cells = <1>;
+			};
+
+			uart0_pins: uart0-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPD01__HUR_TXD
+					N32905_PAD_GPD02__HUR_RXD
+					N32905_PAD_GPD03__HUR_CTS
+					N32905_PAD_GPD04__HUR_RTS
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+
+			uart0_2pins: uart0-2pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPD01__HUR_TXD
+					N32905_PAD_GPD02__HUR_RXD
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+
+			uart1_pins: uart1-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPA10__URTXD
+					N32905_PAD_GPA11__URRXD
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
 		};
 
 		clks: clk@B0000200 {

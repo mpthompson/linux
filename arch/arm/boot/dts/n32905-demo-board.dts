@@ -26,6 +26,8 @@
 
 	apb@B8000000 {
 		uart1: serial@B8008100 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&uart1_pins>;
 			status = "okay";
 		};
 	};
