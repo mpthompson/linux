@@ -24,11 +24,43 @@
 	compatible = "nuvoton,n32905-demo-board", "nuvoton,n32905",
 					"nuvoton,n329";
 
+	ahb@B0000000 {
+		pinctrl@B0000000 {
+			led_pins: led_pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPB03__GPIOB_D03
+					N32905_PAD_GPB04__GPIOB_D04
+					N32905_PAD_GPB05__GPIOB_D05
+					N32905_PAD_GPB06__GPIOB_D06
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+		};
+	};
+
 	apb@B8000000 {
 		uart1: serial@B8008100 {
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart1_pins>;
 			status = "okay";
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&led_pins>;
+
+		user {
+			label = "led1",
+					"led2",
+					"led3",
+					"led4";
+			gpios = <&gpio2 3 1>,
+					<&gpio2 4 1>,
+					<&gpio2 5 1>,
+					<&gpio2 6 1>;
 		};
 	};
 };

@@ -236,6 +236,12 @@ config GPIO_MXS
 	select GPIO_GENERIC
 	select GENERIC_IRQ_CHIP
 
+config GPIO_N329
+	def_bool y
+	depends on ARCH_N329
+	select GPIO_GENERIC
+	select GENERIC_IRQ_CHIP
+
 config GPIO_OCTEON
 	tristate "Cavium OCTEON GPIO"
 	depends on GPIOLIB && CAVIUM_OCTEON_SOC

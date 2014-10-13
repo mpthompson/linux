@@ -25,6 +25,11 @@
 	interrupt-parent = <&aic>;
 
 	aliases {
+		gpio0 = &gpio0;
+		gpio1 = &gpio1;
+		gpio2 = &gpio2;
+		gpio3 = &gpio3;
+		gpio4 = &gpio4;
 		serial0 = &uart0;
 		serial1 = &uart1;
 	};
@@ -61,30 +66,35 @@
 				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
 				gpio-controller;
 				#gpio-cells = <1>;
+				ngpio = <11>;
 			};
 
 			gpio1: gpio@1 {
 				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
 				gpio-controller;
 				#gpio-cells = <1>;
+				ngpio = <16>;
 			};
 
 			gpio2: gpio@2 {
 				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
 				gpio-controller;
 				#gpio-cells = <1>;
+				ngpio = <16>;
 			};
 
 			gpio3: gpio@3 {
 				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
 				gpio-controller;
 				#gpio-cells = <1>;
+				ngpio = <16>;
 			};
 
 			gpio4: gpio@4 {
 				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
 				gpio-controller;
 				#gpio-cells = <1>;
+				ngpio = <11>;
 			};
 
 			uart0_pins: uart0-pins@0 {
