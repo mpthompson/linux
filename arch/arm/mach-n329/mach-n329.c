@@ -36,6 +36,11 @@ static u32 socid;
 
 static void __iomem *wtcr_addr;
 
+static void __init n32905_mcuzone_init(void)
+{
+	/* Do nothing for now. */
+}
+
 static void __init n32905_demo_board_init(void)
 {
 	/* Do nothing for now. */
@@ -127,11 +132,12 @@ static void __init n329_machine_init(void)
 
 	parent = soc_device_to_device(soc_dev);
 
+	if (of_machine_is_compatible("nuvoton,n32905-mcuzone"))
+		n32905_mcuzone_init();
 	if (of_machine_is_compatible("nuvoton,n32905-demo-board"))
 		n32905_demo_board_init();
 
-	of_platform_populate(NULL, of_default_bus_match_table,
-			     NULL, parent);
+	of_platform_populate(NULL, of_default_bus_match_table, NULL, parent);
 
 	n329_restart_init();
 }
