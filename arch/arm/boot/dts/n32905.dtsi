@@ -25,7 +25,7 @@
 	interrupt-parent = <&aic>;
 
 	aliases {
-		gpio0 = &gpio0;
+		gpio = &gpio;
 		serial0 = &uart0;
 		serial1 = &uart1;
 	};
@@ -54,42 +54,6 @@
 		gcr@B0000000 {
 			compatible = "nuvoton,gcr";
 			reg = <0xB0000000 0x200>;
-		};
-
-		pinctrl@B0000000 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			compatible = "nuvoton,n32905-pinctrl";
-			reg = <0xB0000000 0x200 0xB8001000 0x100>;
-
-			uart0_pins: uart0-pins@0 {
-				reg = <0>;
-				nuvoton,pinmux-ids = <
-					N32905_PAD_GPD01__HUR_TXD
-					N32905_PAD_GPD02__HUR_RXD
-					N32905_PAD_GPD03__HUR_CTS
-					N32905_PAD_GPD04__HUR_RTS
-				>;
-				nuvoton,pull-up = <N329_PULL_DISABLE>;
-			};
-
-			uart0_2pins: uart0-2pins@0 {
-				reg = <0>;
-				nuvoton,pinmux-ids = <
-					N32905_PAD_GPD01__HUR_TXD
-					N32905_PAD_GPD02__HUR_RXD
-				>;
-				nuvoton,pull-up = <N329_PULL_DISABLE>;
-			};
-
-			uart1_pins: uart1-pins@0 {
-				reg = <0>;
-				nuvoton,pinmux-ids = <
-					N32905_PAD_GPA10__URTXD
-					N32905_PAD_GPA11__URRXD
-				>;
-				nuvoton,pull-up = <N329_PULL_DISABLE>;
-			};
 		};
 
 		clks: clk@B0000200 {
@@ -133,12 +97,48 @@
 			reg = <0xB8000000 0x1000>;
 		};
 
-		gpio0: gpio@B8001000 {
-			compatible = "nuvoton,n32905-gpio";
-			gpio-controller;
+		pinctrl@B8001000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "nuvoton,n32905-pinctrl";
 			reg = <0xB8001000 0x100 0xB0000000 0x200>;
-			interrupts = <2 3 4 5>;
-			clocks = <&clks 75>, <&clks 76>, <&clks 77>;
+
+			gpio: gpio@0 {
+				compatible = "nuvoton,n329-gpio";
+				gpio-controller;
+				#gpio-cells = <2>;
+				interrupts = <2 3 4 5>;
+				clocks = <&clks 75>, <&clks 76>, <&clks 77>;
+			};
+
+			uart0_pins: uart0-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPD01__HUR_TXD
+					N32905_PAD_GPD02__HUR_RXD
+					N32905_PAD_GPD03__HUR_CTS
+					N32905_PAD_GPD04__HUR_RTS
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+
+			uart0_2pins: uart0-2pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPD01__HUR_TXD
+					N32905_PAD_GPD02__HUR_RXD
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+
+			uart1_pins: uart1-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPA10__URTXD
+					N32905_PAD_GPA11__URRXD
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
 		};
 
 		tmr@B8002000 {

@@ -15,6 +15,13 @@
 #include <linux/platform_device.h>
 #include <linux/pinctrl/pinctrl.h>
 
+/* GPIO bank definition */
+#define GPIO_BANK_A 0
+#define GPIO_BANK_B 1
+#define GPIO_BANK_C 2
+#define GPIO_BANK_D 3
+#define GPIO_BANK_E 4
+
 #define N329_PINCTRL_PIN(pin)	PINCTRL_PIN(pin, #pin)
 #define PINID(bank, pin)		((bank) * 16 + (pin))
 

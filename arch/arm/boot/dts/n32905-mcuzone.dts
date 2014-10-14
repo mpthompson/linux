@@ -23,8 +23,8 @@
 	model = "N32905 Mcuzone MDK905-EK development board";
 	compatible = "nuvoton,n32905-mcuzone", "nuvoton,n32905", "nuvoton,n329";
 
-	ahb@B0000000 {
-		pinctrl@B0000000 {
+	apb@B8000000 {
+		pinctrl@B8001000 {
 			led_pins: led_pins@0 {
 				reg = <0>;
 				nuvoton,pinmux-ids = <
@@ -36,9 +36,7 @@
 				nuvoton,pull-up = <N329_PULL_DISABLE>;
 			};
 		};
-	};
 
-	apb@B8000000 {
 		uart1: serial@B8008100 {
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart1_pins>;
@@ -46,22 +44,34 @@
 		};
 	};
 
-	leds {
+	gpio-leds {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
 		pinctrl-0 = <&led_pins>;
-/*
-		user {
-			label = "led1",
-					"led2",
-					"led3",
-					"led4";
-			gpios = <&gpio9 3 1>,
-					<&gpio2 4 1>,
-					<&gpio2 5 1>,
-					<&gpio2 6 1>;
+
+		led0 {
+			label ="green:led0";
+			gpios = <&gpio 15 1>;
+			default-state = "off";
 		};
-*/
+
+		led1 {
+			label ="green:led1";
+			gpios = <&gpio 16 1>;
+			default-state = "on";
+		};
+
+		led2 {
+			label ="green:led2";
+			gpios = <&gpio 17 1>;
+			default-state = "off";
+		};
+
+		led3 {
+			label ="green:led3";
+			gpios = <&gpio 18 1>;
+			default-state = "off";
+		};
 	};
 };
 
