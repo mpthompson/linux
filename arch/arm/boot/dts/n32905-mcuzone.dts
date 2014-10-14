@@ -52,7 +52,7 @@
 		led0 {
 			label ="green:led0";
 			gpios = <&gpio 15 1>;
-			default-state = "off";
+			default-state = "on";
 		};
 
 		led1 {
@@ -64,13 +64,13 @@
 		led2 {
 			label ="green:led2";
 			gpios = <&gpio 17 1>;
-			default-state = "off";
+			default-state = "on";
 		};
 
 		led3 {
 			label ="green:led3";
 			gpios = <&gpio 18 1>;
-			default-state = "off";
+			default-state = "on";
 		};
 	};
 };
