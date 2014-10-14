@@ -50,17 +50,18 @@
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
 		pinctrl-0 = <&led_pins>;
-
+/*
 		user {
 			label = "led1",
 					"led2",
 					"led3",
 					"led4";
-			gpios = <&gpio2 3 1>,
+			gpios = <&gpio9 3 1>,
 					<&gpio2 4 1>,
 					<&gpio2 5 1>,
 					<&gpio2 6 1>;
 		};
+*/
 	};
 };
 

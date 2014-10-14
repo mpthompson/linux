@@ -26,10 +26,6 @@
 
 	aliases {
 		gpio0 = &gpio0;
-		gpio1 = &gpio1;
-		gpio2 = &gpio2;
-		gpio3 = &gpio3;
-		gpio4 = &gpio4;
 		serial0 = &uart0;
 		serial1 = &uart1;
 	};
@@ -65,41 +61,6 @@
 			#size-cells = <0>;
 			compatible = "nuvoton,n32905-pinctrl";
 			reg = <0xB0000000 0x200 0xB8001000 0x100>;
-
-			gpio0: gpio@0 {
-				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
-				gpio-controller;
-				#gpio-cells = <1>;
-				ngpio = <11>;
-			};
-
-			gpio1: gpio@1 {
-				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
-				gpio-controller;
-				#gpio-cells = <1>;
-				ngpio = <16>;
-			};
-
-			gpio2: gpio@2 {
-				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
-				gpio-controller;
-				#gpio-cells = <1>;
-				ngpio = <16>;
-			};
-
-			gpio3: gpio@3 {
-				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
-				gpio-controller;
-				#gpio-cells = <1>;
-				ngpio = <16>;
-			};
-
-			gpio4: gpio@4 {
-				compatible = "nuvoton,n32905-gpio", "nuvoton,n329-gpio";
-				gpio-controller;
-				#gpio-cells = <1>;
-				ngpio = <11>;
-			};
 
 			uart0_pins: uart0-pins@0 {
 				reg = <0>;
@@ -170,6 +131,14 @@
 			interrupt-controller;
 			#interrupt-cells = <1>;
 			reg = <0xB8000000 0x1000>;
+		};
+
+		gpio0: gpio@B8001000 {
+			compatible = "nuvoton,n32905-gpio";
+			gpio-controller;
+			reg = <0xB8001000 0x100 0xB0000000 0x200>;
+			interrupts = <2 3 4 5>;
+			clocks = <&clks 75>, <&clks 76>, <&clks 77>;
 		};
 
 		tmr@B8002000 {

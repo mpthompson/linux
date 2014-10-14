@@ -23,6 +23,8 @@
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
+#include <linux/clockchips.h>
+#include <linux/clk.h>
 #include <linux/gpio.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -30,6 +32,8 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+
+#define N32905_PINCOUNT		72
 
 enum n329_gpio_id {
 	N32905_GPIO,
@@ -39,8 +43,7 @@ enum n329_gpio_id {
 struct n329_gpio_port {
 	struct gpio_chip gc;
 	void __iomem *base;
-	void __iomem *gpio_base;
-	int id;
+	void __iomem *gcr_base;
 	enum n329_gpio_id devid;
 };
 
@@ -57,12 +60,31 @@ struct n329_gpio_port {
 #define PINID_TO_BANK(p)	((p) >> 4)
 #define PINID_TO_PIN(p)		((p) % 16)
 
+/* maps an offset to a pinid */
+static u16 n329_gpio_offset_to_pinid(unsigned offset)
+{
+	u16 pinid = 0xffff;
+
+	if (offset < 12)
+		pinid = PINID(0, offset);
+	else if (offset < 28)
+		pinid = PINID(1, offset - 12);
+	else if (offset < 44)
+		pinid = PINID(2, offset - 28);
+	else if (offset < 60)
+		pinid = PINID(3, offset - 44);
+	else if (offset < 72)
+		pinid = PINID(4, offset - 60);
+
+	return pinid;
+}
+
 /* returns the value of the GPIO pin */
 static int n329_gpio_get(struct n329_gpio_port *p, u16 pinid) 
 {
 	u16 bank = PINID_TO_BANK(pinid);
 	u16 pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = p->gpio_base + (bank << 4) + 0x0c;
+	void __iomem *reg = p->base + (bank << 4) + 0x0c;
 
 	return readl(reg) & (1 << pin) ? 1 : 0;
 }
@@ -72,7 +94,7 @@ static void n329_gpio_set_input(struct n329_gpio_port *p, u16 pinid)
 {
 	u16 bank = PINID_TO_BANK(pinid);
 	u16 pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = p->gpio_base + (bank << 4);
+	void __iomem *reg = p->base + (bank << 4);
 
 	writel(readl(reg) & ~(1 << pin), reg);
 }
@@ -82,7 +104,7 @@ static void n329_gpio_set_output(struct n329_gpio_port *p, u16 pinid)
 {
 	u16 bank = PINID_TO_BANK(pinid);
 	u16 pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = p->gpio_base + (bank << 4);
+	void __iomem *reg = p->base + (bank << 4);
 
 	writel(readl(reg) | (1 << pin), reg);
 }
@@ -92,7 +114,7 @@ static void n329_gpio_set(struct n329_gpio_port *p, u16 pinid, int state)
 {	
 	u16 bank = PINID_TO_BANK(pinid);
 	u16 pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = p->gpio_base + (bank << 4) + 0x08;
+	void __iomem *reg = p->base + (bank << 4) + 0x08;
 
 	if (state)
 		writel(readl(reg) | (1 << pin), reg); 
@@ -105,7 +127,7 @@ static int n329_gpio_select(struct n329_gpio_port *p, u16 pinid)
 {
 	u16 bank = PINID_TO_BANK(pinid);
 	u16 pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = p->gpio_base + 0x80 + (bank << 2);
+	void __iomem *reg = p->gcr_base + 0x80 + (bank << 2);
 
 	if (pin > 16)
 		goto err;
@@ -147,34 +169,43 @@ err:
 static int n329_gpio_get_value(struct gpio_chip *gc, unsigned offset)
 {
 	struct n329_gpio_port *p = to_n329_gpio_port(gc);
-	u16 bank = p->id;
-	
+	u16 pinid = n329_gpio_offset_to_pinid(offset);
+
+	if (pinid == 0xffff)
+		return 0;
+
 	/* Get the value */
-	return n329_gpio_get(p, PINID(bank, offset));
+	return n329_gpio_get(p, pinid);
 }
 
 static void n329_gpio_set_value(struct gpio_chip *gc, unsigned offset, int value)
 {
 	struct n329_gpio_port *p = to_n329_gpio_port(gc);
-	u16 bank = p->id;
+	u16 pinid = n329_gpio_offset_to_pinid(offset);
+
+	if (pinid == 0xffff)
+		return;
 
 	/* Set the value */
-	n329_gpio_set(p, PINID(bank, offset), value); 
+	n329_gpio_set(p, pinid, value); 
 }
 
 static int n329_gpio_dir_out(struct gpio_chip *gc, unsigned offset, int value)
 {
 	struct n329_gpio_port *p = to_n329_gpio_port(gc);
-	u16 bank = p->id;
+	u16 pinid = n329_gpio_offset_to_pinid(offset);
+
+	if (pinid == 0xffff)
+		return -ENXIO;
 
 	/* Set the pin function mux GPIO */
-	n329_gpio_select(p, PINID(bank, offset));
+	n329_gpio_select(p, pinid);
 
 	/* Set for output */
-	n329_gpio_set_output(p, PINID(bank, offset));
+	n329_gpio_set_output(p, pinid);
 
 	/* Set initial value */
-	n329_gpio_set(p, PINID(bank, offset), value);
+	n329_gpio_set(p, pinid, value);
 
 	return 0;
 }
@@ -182,13 +213,16 @@ static int n329_gpio_dir_out(struct gpio_chip *gc, unsigned offset, int value)
 static int n329_gpio_dir_in(struct gpio_chip *gc, unsigned offset)
 {
 	struct n329_gpio_port *p = to_n329_gpio_port(gc);
-	u16 bank = p->id;
+	u16 pinid = n329_gpio_offset_to_pinid(offset);
+
+	if (pinid == 0xffff)
+		return -ENXIO;
 
 	/* Set the pin function mux GPIO */
-	n329_gpio_select(p, PINID(bank, offset));
+	n329_gpio_select(p, pinid);
 
 	/* Set for input */
-	n329_gpio_set_input(p, PINID(bank, offset));
+	n329_gpio_set_input(p, pinid);
 
 	return 0;
 }
@@ -214,45 +248,41 @@ static int n329_gpio_probe(struct platform_device *pdev)
 	const struct of_device_id *of_id =
 			of_match_device(n329_gpio_of_match, &pdev->dev);
 	struct device_node *np = pdev->dev.of_node;
-	struct device_node *parent;
 	static void __iomem *base;
-	static void __iomem *gpio_base;
+	static void __iomem *gcr_base;
 	struct n329_gpio_port *port;
-	u32 ngpio;
+	struct clk *clk_mux;
+	struct clk *clk_div;
+	struct clk *clk_gate;
 	int err;
+
+	clk_mux = of_clk_get(np, 0);
+	clk_div = of_clk_get(np, 1);
+	clk_gate = of_clk_get(np, 2);
+	if (IS_ERR(clk_mux) || IS_ERR(clk_div) || IS_ERR(clk_gate)) {
+		return -ENXIO;
+	}
+	clk_prepare_enable(clk_mux);
+	clk_prepare_enable(clk_div);
+	clk_prepare_enable(clk_gate);
 
 	port = devm_kzalloc(&pdev->dev, sizeof(*port), GFP_KERNEL);
 	if (!port)
 		return -ENOMEM;
 
-	port->id = of_alias_get_id(np, "gpio");
-	if (port->id < 0)
-		return port->id;
 	port->devid = (enum n329_gpio_id) of_id->data;
 
-	/* count of pins for this port */
-	err = of_property_read_u32(np, "ngpio", &ngpio);
-	if (err)
-		return err;
+	base = of_iomap(np, 0);
+	gcr_base = of_iomap(np, 1);
+	if (!base || !gcr_base)
+		return -EADDRNOTAVAIL;
 
-	/*
-	 * map memory region only once, as all the gpio ports
-	 * share the same one
-	 */
-	if (!base || !gpio_base) {
-		parent = of_get_parent(np);
-		base = of_iomap(parent, 0);
-		gpio_base = of_iomap(parent, 1);
-		of_node_put(parent);
-		if (!base || !gpio_base)
-			return -EADDRNOTAVAIL;
-	}
 	port->base = base;
-	port->gpio_base = base;
+	port->gcr_base = base;
 
 	port->gc.label = "n32905-gpio";
 	port->gc.base = 0;
-	port->gc.ngpio = ngpio;
+	port->gc.ngpio = N32905_PINCOUNT;
 	port->gc.owner = THIS_MODULE;
 
 	port->gc.direction_input = n329_gpio_dir_in;
