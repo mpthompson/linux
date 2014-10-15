@@ -13,7 +13,9 @@
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/irq.h>
+#include <linux/of_irq.h>
 #include <linux/irqdomain.h>
+#include <linux/interrupt.h>
 #include <linux/clockchips.h>
 #include <linux/clk.h>
 #include <linux/gpio.h>
@@ -29,8 +31,11 @@
 #include "core.h"
 #include "pinctrl-n329.h"
 
-#define SUFFIX_LEN	4
-#define BADPIN		0xffff
+#define SUFFIX_LEN		4
+#define BADPINID		0xffff
+
+/* Must start after 32 N329XX AIC hardware IRQs */
+#define GPIO_IRQ_START	32
 
 struct n329_pinctrl_data {
 	struct device *dev;
@@ -43,10 +48,9 @@ struct n329_pinctrl_data {
 
 #define to_n329_pinctrl_data(u) container_of(u, struct n329_pinctrl_data, gc)
 
-/* maps an offset to a pinid */
-static u16 n329_gpio_offset_to_pinid(unsigned offset)
+static u16 n329_offset_to_pinid(unsigned offset)
 {
-	u16 pinid = BADPIN;
+	u16 pinid = BADPINID;
 
 	if (offset < 12)
 		pinid = PINID(0, offset);
@@ -62,153 +66,269 @@ static u16 n329_gpio_offset_to_pinid(unsigned offset)
 	return pinid;
 }
 
-/* returns the value of the GPIO pin */
-static int n329_gpio_get(struct n329_pinctrl_data *p, u16 pinid) 
+static int n329_pinctrl_gpio_get(struct n329_pinctrl_data *p, u16 pinid) 
 {
 	u16 bank = PINID_TO_BANK(pinid);
 	u16 pin = PINID_TO_PIN(pinid);
 	void __iomem *reg = p->gpio_base + (bank << 4) + 0x0c;
 
+	/* Return the value of the GPIO pin */
 	return readl(reg) & (1 << pin) ? 1 : 0;
 }
 
-/* set direction of pin to input mode */
-static void n329_gpio_set_input(struct n329_pinctrl_data *p, u16 pinid)
-{
-	u16 bank = PINID_TO_BANK(pinid);
-	u16 pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = p->gpio_base + (bank << 4);
-
-	writel(readl(reg) & ~(1 << pin), reg);
-}
-
-/* set direction of pin to output mode */
-static void n329_gpio_set_output(struct n329_pinctrl_data *p, u16 pinid)
-{
-	u16 bank = PINID_TO_BANK(pinid);
-	u16 pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = p->gpio_base + (bank << 4);
-
-	writel(readl(reg) | (1 << pin), reg);
-}
-
-/* set the pin out to state */
-static void n329_gpio_set(struct n329_pinctrl_data *p, u16 pinid, int state) 
+static void n329_pinctrl_gpio_set(struct n329_pinctrl_data *p, u16 pinid, int state) 
 {	
 	u16 bank = PINID_TO_BANK(pinid);
 	u16 pin = PINID_TO_PIN(pinid);
 	void __iomem *reg = p->gpio_base + (bank << 4) + 0x08;
 
+	/* Set the pin out to state */
 	if (state)
 		writel(readl(reg) | (1 << pin), reg); 
 	else
 		writel(readl(reg) & ~(1 << pin), reg);
 }
 
-/* select the mux to enable gpio function on the indicated pin */
-static int n329_gpio_mux_select(struct n329_pinctrl_data *p, u16 pinid)
+static void n329_pinctrl_gpio_set_input(struct n329_pinctrl_data *p, u16 pinid)
 {
 	u16 bank = PINID_TO_BANK(pinid);
 	u16 pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = p->gcr_base + 0x80 + (bank << 2);
+	void __iomem *reg = p->gpio_base + (bank << 4);
 
-	if (pin > 16)
+	/* Set direction of pin to input mode */
+	writel(readl(reg) & ~(1 << pin), reg);
+}
+
+static void n329_pinctrl_gpio_set_output(struct n329_pinctrl_data *p, u16 pinid)
+{
+	u16 bank = PINID_TO_BANK(pinid);
+	u16 pin = PINID_TO_PIN(pinid);
+	void __iomem *reg = p->gpio_base + (bank << 4);
+
+	/* Set direction of pin to output mode */
+	writel(readl(reg) | (1 << pin), reg);
+}
+
+static int n329_pinctrl_mux_select_gpio(struct n329_pinctrl_data *p, u16 pinid)
+{
+	u16 bank = PINID_TO_BANK(pinid);
+	u16 pin = PINID_TO_PIN(pinid);
+	void __iomem *reg;
+
+	/* Sanity checks */
+	if (bank > 4)
 		goto err;
-		
-	switch (bank)
-	{
-		case GPIO_BANK_A:	
-			if (pin > 11)
-				goto err;
-			writel(readl(reg) & ~(0x3 << (pin << 1)), reg);
-			break;
-		
-		case GPIO_BANK_B:
-			writel(readl(reg) & ~(0x3 << (pin << 1)), reg);
-			break;
+	if ((pin > 15) || (((bank == 0) || (bank == 4)) && pin > 11))
+		goto err;
 
-		case GPIO_BANK_C:
-			writel(readl(reg) & ~(0x3 << (pin << 1)), reg);
-			break;
-				
-		case GPIO_BANK_D:			
-			writel(readl(reg) & ~(0x3 << (pin << 1)), reg);
-			break;
-		
-		case GPIO_BANK_E:
-			if (pin > 11)
-				goto err;
-			writel(readl(reg) & ~(0x3 << (pin << 1)), reg);
-			break;
-		default:
-			break;
-	}
+	/* Mux register address */
+	reg = p->gcr_base + 0x80 + (bank << 2);
+
+	/* Select the mux to enable gpio function on the indicated pin */
+	writel(readl(reg) & ~(0x3 << (pin << 1)), reg);
+
 	return 1;
 	
 err:
 	return 0;
 }
 
-static int n329_gpio_get_value(struct gpio_chip *gc, unsigned offset)
+#if 0
+/* returns the irq index for the GPIO pin */
+static int n329_pinctrl_gpio_get_irq(struct n329_pinctrl_data *p, u16 pinid) 
+{
+	u16 bank = PINID_TO_BANK(pinid);
+	u16 pin = PINID_TO_PIN(pinid);
+	void __iomem *reg = p->gpio_base + 0x80 + (bank << 2);
+
+	return (readl(reg) >> (pin << 1)) & 0x3;
+}
+#endif
+
+static int n329_pinctrl_gpio_get_value(struct gpio_chip *gc, unsigned offset)
 {
 	struct n329_pinctrl_data *p = to_n329_pinctrl_data(gc);
-	u16 pinid = n329_gpio_offset_to_pinid(offset);
+	u16 pinid = n329_offset_to_pinid(offset);
 
-	if (pinid == BADPIN)
+	if (pinid == BADPINID)
 		return 0;
 
 	/* Get the value */
-	return n329_gpio_get(p, pinid);
+	return n329_pinctrl_gpio_get(p, pinid);
 }
 
-static void n329_gpio_set_value(struct gpio_chip *gc, unsigned offset, int value)
+static void n329_pinctrl_gpio_set_value(struct gpio_chip *gc, unsigned offset, int value)
 {
 	struct n329_pinctrl_data *p = to_n329_pinctrl_data(gc);
-	u16 pinid = n329_gpio_offset_to_pinid(offset);
+	u16 pinid = n329_offset_to_pinid(offset);
 
-	if (pinid == BADPIN)
+	if (pinid == BADPINID)
 		return;
 
-	/* Set the value */
-	n329_gpio_set(p, pinid, value); 
+	n329_pinctrl_gpio_set(p, pinid, value); 
 }
 
-static int n329_gpio_dir_out(struct gpio_chip *gc, unsigned offset, int value)
+static int n329_pinctrl_gpio_dir_out(struct gpio_chip *gc, unsigned offset, int value)
 {
 	struct n329_pinctrl_data *p = to_n329_pinctrl_data(gc);
-	u16 pinid = n329_gpio_offset_to_pinid(offset);
+	u16 pinid = n329_offset_to_pinid(offset);
 
-	if (pinid == BADPIN)
+	if (pinid == BADPINID)
 		return -ENXIO;
 
-	/* Set the pin function mux GPIO */
-	n329_gpio_mux_select(p, pinid);
+	/* Select pin mux for gpio functionality */
+	n329_pinctrl_mux_select_gpio(p, pinid);
 
 	/* Set for output */
-	n329_gpio_set_output(p, pinid);
+	n329_pinctrl_gpio_set_output(p, pinid);
 
 	/* Set initial value */
-	n329_gpio_set(p, pinid, value);
+	n329_pinctrl_gpio_set(p, pinid, value);
 
 	return 0;
 }
 
-static int n329_gpio_dir_in(struct gpio_chip *gc, unsigned offset)
+static int n329_pinctrl_gpio_dir_in(struct gpio_chip *gc, unsigned offset)
 {
 	struct n329_pinctrl_data *p = to_n329_pinctrl_data(gc);
-	u16 pinid = n329_gpio_offset_to_pinid(offset);
+	u16 pinid = n329_offset_to_pinid(offset);
 
-	if (pinid == BADPIN)
+	if (pinid == BADPINID)
 		return -ENXIO;
 
-	/* Set the pin function mux GPIO */
-	n329_gpio_mux_select(p, pinid);
+	/* Select pin mux for gpio functionality */
+	n329_pinctrl_mux_select_gpio(p, pinid);
 
 	/* Set for input */
-	n329_gpio_set_input(p, pinid);
+	n329_pinctrl_gpio_set_input(p, pinid);
 
 	return 0;
 }
+
+static int n329_pinctrl_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
+{
+	return (int) offset + GPIO_IRQ_START;
+}
+
+static int n329_pinctrl_gpio_irq_set_type(struct irq_data *d, unsigned type)
+{
+#if 0
+	unsigned irq = d->irq;
+	struct bcm2708_gpio *gpio = irq_get_chip_data(irq);
+
+	if (type & ~(IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING))
+		return -EINVAL;
+
+	if (type & IRQ_TYPE_EDGE_RISING) {
+		gpio->rising |= (1 << IRQ_TO_GPIO(irq));
+	} else {
+		gpio->rising &= ~(1 << IRQ_TO_GPIO(irq));
+	}
+
+	if (type & IRQ_TYPE_EDGE_FALLING) {
+		gpio->falling |= (1 << IRQ_TO_GPIO(irq));
+	} else {
+		gpio->falling &= ~(1 << IRQ_TO_GPIO(irq));
+	}
+#endif
+
+	return 0;
+}
+
+static void n329_pinctrl_gpio_irq_mask(struct irq_data *d)
+{
+#if 0
+	unsigned irq = d->irq;
+	struct bcm2708_gpio *gpio = irq_get_chip_data(irq);
+	unsigned gn = IRQ_TO_GPIO(irq);
+	unsigned gb = gn / 32;
+	unsigned long rising = readl(gpio->base + GPIOREN(gb));
+	unsigned long falling = readl(gpio->base + GPIOFEN(gb));
+
+	gn = gn % 32;
+
+	writel(rising & ~(1 << gn), gpio->base + GPIOREN(gb));
+	writel(falling & ~(1 << gn), gpio->base + GPIOFEN(gb));
+#endif
+}
+
+static void n329_pinctrl_gpio_irq_unmask(struct irq_data *d)
+{
+#if 0
+	unsigned irq = d->irq;
+	struct bcm2708_gpio *gpio = irq_get_chip_data(irq);
+	unsigned gn = IRQ_TO_GPIO(irq);
+	unsigned gb = gn / 32;
+	unsigned long rising = readl(gpio->base + GPIOREN(gb));
+	unsigned long falling = readl(gpio->base + GPIOFEN(gb));
+
+	gn = gn % 32;
+
+	writel(1 << gn, gpio->base + GPIOEDS(gb));
+
+	if (gpio->rising & (1 << gn)) {
+		writel(rising | (1 << gn), gpio->base + GPIOREN(gb));
+	} else {
+		writel(rising & ~(1 << gn), gpio->base + GPIOREN(gb));
+	}
+
+	if (gpio->falling & (1 << gn)) {
+		writel(falling | (1 << gn), gpio->base + GPIOFEN(gb));
+	} else {
+		writel(falling & ~(1 << gn), gpio->base + GPIOFEN(gb));
+	}
+#endif
+}
+
+static irqreturn_t n329_pinctrl_gpio_interrupt(int irq, void *dev_id)
+{
+	u16 bank;
+	struct n329_pinctrl_data *d = dev_id;
+
+	/* Get the interrupt being handled */
+
+	/* Loop over each bank */
+	for (bank = 0; bank < 4; bank++) {
+		/* Get the active pins for this bank */
+		
+		/* Handle each gpio that is asserting an interrupt */
+
+		/* Clear the interrupt */
+	}
+
+#if 0
+	// Loop through each possible.	
+	unsigned long edsr;
+	unsigned bank;
+	int i;
+	unsigned gpio;
+	for (bank = 0; bank <= 1; bank++) {
+		edsr = readl(__io_address(GPIO_BASE) + GPIOEDS(bank));
+		for_each_set_bit(i, &edsr, 32) {
+			gpio = i + bank * 32;
+			generic_handle_irq(gpio_to_irq(gpio));
+		}
+		writel(0xffffffff, __io_address(GPIO_BASE) + GPIOEDS(bank));
+	}
+#endif
+
+	return IRQ_HANDLED;
+}
+
+static struct irqaction n329_gpio_irq = {
+	.name = "N329 GPIO handler",
+	.flags = IRQF_DISABLED | IRQF_TIMER | IRQF_IRQPOLL,
+	.handler = n329_pinctrl_gpio_interrupt,
+};
+
+static struct irq_chip n329_irqchip = {
+	.name = "N329 GPIO chip",
+	.irq_enable = n329_pinctrl_gpio_irq_unmask,
+	.irq_disable = n329_pinctrl_gpio_irq_mask,
+	.irq_unmask = n329_pinctrl_gpio_irq_unmask,
+	.irq_mask = n329_pinctrl_gpio_irq_mask,
+	.irq_set_type = n329_pinctrl_gpio_irq_set_type,
+};
 
 static int n329_get_groups_count(struct pinctrl_dev *pctldev)
 {
@@ -455,10 +575,10 @@ static int n329_pinconf_group_set(struct pinctrl_dev *pctldev,
 			}
 		}
 
-		/* cache the config value for n329_pinconf_group_get() */
+		/* Cache the config value for n329_pinconf_group_get() */
 		g->config = config;
 
-	} /* for each config */
+	}
 
 	return 0;
 }
@@ -654,16 +774,17 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	struct clk *clk_mux;
 	struct clk *clk_div;
 	struct clk *clk_gate;
+	unsigned sw_irq, hw_irq0, hw_irq1, hw_irq2, hw_irq3;
 	int ret;
 
-	/* we must have at least one child gpio node */
+	/* We must have at least one child gpio node */
 	gp = n329_get_first_gpio(pdev);
 	if (!gp) {
 		ret = -EINVAL;
 		goto err;
 	}
 
-	/* initialize gpio clocks */
+	/* Initialize gpio clocks */
 	clk_mux = of_clk_get(gp, 0);
 	clk_div = of_clk_get(gp, 1);
 	clk_gate = of_clk_get(gp, 2);
@@ -691,10 +812,6 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 		goto err_free;
 	}
 
-	n329_pinctrl_desc.pins = d->soc->pins;
-	n329_pinctrl_desc.npins = d->soc->npins;
-	n329_pinctrl_desc.name = dev_name(&pdev->dev);
-
 	platform_set_drvdata(pdev, d);
 
 	ret = n329_pinctrl_probe_dt(pdev, d);
@@ -708,20 +825,41 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	d->gc.ngpio = d->soc->npins;
 	d->gc.owner = THIS_MODULE;
 
-	d->gc.direction_input = n329_gpio_dir_in;
-	d->gc.direction_output = n329_gpio_dir_out;
-	d->gc.get = n329_gpio_get_value;
-	d->gc.set = n329_gpio_set_value;
+	d->gc.direction_input = n329_pinctrl_gpio_dir_in;
+	d->gc.direction_output = n329_pinctrl_gpio_dir_out;
+	d->gc.get = n329_pinctrl_gpio_get_value;
+	d->gc.set = n329_pinctrl_gpio_set_value;
+	d->gc.to_irq = n329_pinctrl_gpio_to_irq;
 	d->gc.can_sleep = 0;
 
 	d->gc.of_node = gp;
 
+	/* Add GPIOs */
 	ret = gpiochip_add(&d->gc);
 	if (ret) {
 		dev_err(&pdev->dev, "Couldn't register N329 gpio driver\n");
 		goto err_unmapio;
 	}
 
+	/* Configure GPIO IRQs */
+	for (sw_irq = 0; sw_irq < d->soc->npins; sw_irq++) {
+		irq_set_chip_data(sw_irq + GPIO_IRQ_START, d);
+		irq_set_chip(sw_irq + GPIO_IRQ_START, &n329_irqchip);
+		set_irq_flags(sw_irq + GPIO_IRQ_START, IRQF_VALID);
+	}
+	hw_irq0 = irq_of_parse_and_map(gp, 0);
+	hw_irq1 = irq_of_parse_and_map(gp, 1);
+	hw_irq2 = irq_of_parse_and_map(gp, 2);
+	hw_irq3 = irq_of_parse_and_map(gp, 3);
+	setup_irq(hw_irq0, &n329_gpio_irq);
+	setup_irq(hw_irq1, &n329_gpio_irq);
+	setup_irq(hw_irq2, &n329_gpio_irq);
+	setup_irq(hw_irq3, &n329_gpio_irq);
+
+	/* Add pin control */
+	n329_pinctrl_desc.pins = d->soc->pins;
+	n329_pinctrl_desc.npins = d->soc->npins;
+	n329_pinctrl_desc.name = dev_name(&pdev->dev);
 	d->pctl = pinctrl_register(&n329_pinctrl_desc, &pdev->dev, d);
 	if (!d->pctl) {
 		dev_err(&pdev->dev, "Couldn't register N329 pinctrl driver\n");

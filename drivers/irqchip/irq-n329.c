@@ -52,28 +52,22 @@ static struct irq_domain *aic_domain;
 
 static void aic_ack_irq(struct irq_data *d)
 {
-	/* 
-	 * This register is used by the interrupt service routine to 
+	/* This register is used by the interrupt service routine to 
 	 * indicate that it is completely served. Thus, the interrupt 
 	 * handler can write any value to this register to indicate 
-	 * the end of its interrupt service.
-	 */
+	 * the end of its interrupt service */
 	__raw_writel(0x01, aic_base + HW_AIC_EOSCR);
 }
 
 static void aic_mask_irq(struct irq_data *d)
 {
-	/* 
-	 * Disables the corresponding interrupt channel.
-	 */
+	/* Disables the corresponding interrupt channel */
 	__raw_writel(1 << (d->hwirq), aic_base + HW_AIC_MDCR);
 }
 
 static void aic_unmask_irq(struct irq_data *d)
 {
-	/*
-	 * Enables the corresponding interrupt channel.
-	 */
+	/* Enables the corresponding interrupt channel */
 	__raw_writel(1 << (d->hwirq), aic_base + HW_AIC_MECR);
 }
 
@@ -115,10 +109,8 @@ static int __init aic_of_init(struct device_node *np,
 	aic_base = of_iomap(np, 0);
 	WARN_ON(!aic_base);
 
-	/*
-	 * The AIC doesn't have an individual reset so we put the
-	 * source control registers back to their defaults.
-	 */
+	/* The AIC doesn't have an individual reset so we put the
+	 * source control registers back to their defaults */
 	__raw_writel(0xFFFFFFFF, aic_base + HW_AIC_MDCR);
 	__raw_writel(0xFFFFFFFF, aic_base + HW_AIC_SCCR);
 	__raw_writel(0x47474747, aic_base + HW_AIC_SCR1);

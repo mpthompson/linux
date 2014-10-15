@@ -18,14 +18,14 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
-#define HW_TMR_TCSR0	0x00	/* R/W Timer Control and Status Register 0. */
-#define HW_TMR_TCSR1	0x04	/* R/W Timer Control and Status Register 1. */
-#define HW_TMR_TICR0	0x08	/* R/W Timer Initial Control Register 0. */
-#define HW_TMR_TICR1	0x0C	/* R/W Timer Initial Control Register 1. */
-#define HW_TMR_TDR0		0x10	/* R Timer Data Register. */
-#define HW_TMR_TDR1		0x14	/* R Timer Data Register. */
-#define HW_TMR_TISR		0x18	/* R/W Timer Interrupt Status Register. */
-#define HW_TMR_WTCR		0x1C	/* R/W Watchdog Timer Control Register. */
+#define HW_TMR_TCSR0	0x00	/* R/W Timer Control and Status Register 0 */
+#define HW_TMR_TCSR1	0x04	/* R/W Timer Control and Status Register 1 */
+#define HW_TMR_TICR0	0x08	/* R/W Timer Initial Control Register 0 */
+#define HW_TMR_TICR1	0x0C	/* R/W Timer Initial Control Register 1 */
+#define HW_TMR_TDR0		0x10	/* R Timer Data Register 0 */
+#define HW_TMR_TDR1		0x14	/* R Timer Data Register 1 */
+#define HW_TMR_TISR		0x18	/* R/W Timer Interrupt Status Register */
+#define HW_TMR_WTCR		0x1C	/* R/W Watchdog Timer Control Register */
 
 #define TMR_COUNTEN		(0x01 << 30)
 #define TMR_INTEN		(0x01 << 29)
@@ -81,7 +81,7 @@ static void n329_set_mode(enum clock_event_mode mode,
 		clock_event_mode_label[mode]);
 #endif /* DEBUG */
 
-	/* remember timer mode */
+	/* Remember timer mode */
 	n329_clockevent_mode = mode;
 
 	val = __raw_readl(tmr_base + HW_TMR_TCSR0);
@@ -94,7 +94,7 @@ static void n329_set_mode(enum clock_event_mode mode,
 		break;
 
 	case CLOCK_EVT_MODE_ONESHOT:
-		/* don't enable the counter and interrupts just yet */
+		/* Don't enable the counter and interrupts just yet */
 		val = TMR_ONESHOT | TMR_TDREN | clock_event_prescale;
 		break;
 
@@ -113,10 +113,10 @@ static int n329_set_next_event(unsigned long evt,
 {
 	unsigned int val;
 
-	/* set the event count */
+	/* Set the event count */
 	__raw_writel(evt, tmr_base + HW_TMR_TICR0);
 
-	/* enable the counter and interrupt */
+	/* Enable the counter and interrupt */
 	val = __raw_readl(tmr_base + HW_TMR_TCSR0);
 	val &= ~0xff;
 	val |= TMR_COUNTEN | TMR_INTEN | clock_event_prescale;
@@ -139,7 +139,7 @@ static void __init n329_clockevents_init(struct device_node *np)
 	struct clk *timer_xtal;
 	struct clk *timer_pclk;
 
-	/* enable timer 0 pclk source */
+	/* Enable timer 0 pclk source */
 	timer_pclk = of_clk_get(np, 0);
 	if (IS_ERR(timer_pclk)) {
 		pr_err("%s: failed to get clk\n", __func__);
@@ -147,31 +147,31 @@ static void __init n329_clockevents_init(struct device_node *np)
 	}
 	clk_prepare_enable(timer_pclk);
 
-	/* get the timer 0 reference clock which is the crystal */
+	/* Get the timer 2 reference clock which is the crystal */
 	timer_xtal = of_clk_get(np, 2);
 	if (IS_ERR(timer_xtal)) {
 		pr_err("%s: failed to get xtal_clk\n", __func__);
 		return;
 	}
 
-	/* get the clock rate */
+	/* Get the clock rate */
 	clock_event_rate = clk_get_rate(timer_xtal);
 
-	/* determine the prescale */
+	/* Determine the prescale */
 	clock_event_prescale = (clock_event_rate / 1000000) - 1;
 
-	/* correct the clock rate for the prescaler */
+	/* Correct the clock rate for the prescaler */
 	clock_event_rate /= clock_event_prescale + 1;
 
-	/* clear the timer and enable interrupt */
+	/* Clear the timer and enable interrupt */
 	__raw_writel(0x1, tmr_base + HW_TMR_TISR);
 	__raw_writel(0x0, tmr_base + HW_TMR_TCSR0);
 
-	/* make irqs happen */
+	/* Make irqs happen */
 	irq = irq_of_parse_and_map(np, 0);
 	setup_irq(irq, &n329_timer_irq);
 
-	/* configure and register a clock event device */
+	/* Configure and register a clock event device */
 	n329_clockevent_device.cpumask = cpumask_of(0);
 	clockevents_config_and_register(&n329_clockevent_device,
 					clock_event_rate, 0xf, 0xffffffff);
@@ -182,14 +182,14 @@ static cycle_t n329_get_cycles(struct clocksource *cs)
 	unsigned int val;
 	unsigned int cnt;
 
-	/* suspend counting while reading the counter value -- ugh!!! */
+	/* Suspend counting while reading the counter value -- ugh!!! */
 	val = __raw_readl(tmr_base + HW_TMR_TCSR1);
 	__raw_writel(val & ~TMR_COUNTEN, tmr_base + HW_TMR_TCSR1);
 
-	/* get the counter value */
+	/* Get the counter value */
 	cnt = __raw_readl(tmr_base + HW_TMR_TDR1);
 
-	/* now resume counting again */
+	/* Now resume counting again */
 	__raw_writel(val | TMR_COUNTEN, tmr_base + HW_TMR_TCSR1);
 
 	return cnt;
@@ -211,7 +211,7 @@ static void __init n329_clocksource_init(struct device_node *np)
 	struct clk *timer_xtal;
 	struct clk *timer_pclk;
 
-	/* enable timer 1 pclk source */
+	/* Enable timer 1 pclk source */
 	timer_pclk = of_clk_get(np, 1);
 	if (IS_ERR(timer_pclk)) {
 		pr_err("%s: failed to get clk\n", __func__);
@@ -219,7 +219,7 @@ static void __init n329_clocksource_init(struct device_node *np)
 	}
 	clk_prepare_enable(timer_pclk);
 
-	/* get the timer 0 reference clock which is the crystal */
+	/* Get the timer 0 reference clock which is the crystal */
 	timer_xtal = of_clk_get(np, 2);
 	if (IS_ERR(timer_xtal)) {
 		pr_err("%s: failed to get xtal_clk\n", __func__);
@@ -231,7 +231,7 @@ static void __init n329_clocksource_init(struct device_node *np)
 	clk_prescale = (clk_rate / 1000000) - 1;
 	clk_rate /= clk_prescale + 1;
 
-	/* enable the counter */
+	/* Enable the counter */
 	__raw_writel(0x2, tmr_base + HW_TMR_TISR);
 	__raw_writel(0xffffffff, tmr_base + HW_TMR_TICR1);
 	__raw_writel(TMR_COUNTEN | TMR_PERIODIC | TMR_TDREN |
@@ -242,7 +242,7 @@ static void __init n329_clocksource_init(struct device_node *np)
 
 static void __init n329_timer_init(struct device_node *np)
 {
-	/* get the timer base address */
+	/* Get the timer base address */
 	tmr_base = of_iomap(np, 0);
 	WARN_ON(!tmr_base);
 
