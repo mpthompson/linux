@@ -15,6 +15,8 @@
 #include <linux/platform_device.h>
 #include <linux/pinctrl/pinctrl.h>
 
+#define N329_BANKS				5
+
 #define N329_PINCTRL_PIN(pin)	PINCTRL_PIN(pin, #pin)
 #define PINID(bank, pin)		((bank) * 16 + (pin))
 
@@ -56,12 +58,7 @@ struct n329_group {
 	u8 config;
 };
 
-struct n329_regs {
-	u16 muxsel;
-};
-
 struct n329_pinctrl_soc_data {
-	const struct n329_regs *regs;
 	const struct pinctrl_pin_desc *pins;
 	unsigned npins;
 	struct n329_function *functions;

@@ -173,12 +173,7 @@ static const struct pinctrl_pin_desc n32905_pins[] = {
 	N329_PINCTRL_PIN(MF_GPE11),
 };
 
-static struct n329_regs n32905_regs = {
-	.muxsel = 0x80
-};
-
 static struct n329_pinctrl_soc_data n32905_pinctrl_data = {
-	.regs = &n32905_regs,
 	.pins = n32905_pins,
 	.npins = ARRAY_SIZE(n32905_pins),
 };
