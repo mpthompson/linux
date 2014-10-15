@@ -44,6 +44,7 @@ struct n329_pinctrl_data {
 	void __iomem *gcr_base;
 	void __iomem *gpio_base;
 	struct n329_pinctrl_soc_data *soc;
+	struct irq_domain *domain;
 	unsigned hw_irq0;
 	unsigned hw_irq1;
 	unsigned hw_irq2;
@@ -249,13 +250,15 @@ static int n329_pinctrl_gpio_dir_in(struct gpio_chip *gc, unsigned offset)
 
 static int n329_pinctrl_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
 {
+	struct n329_pinctrl_data *p = to_n329_pinctrl_data(gc);
+	return irq_find_mapping(p->domain, offset);
 	return (int) offset + GPIO_IRQ_START;
 }
 
 static int n329_pinctrl_gpio_irq_set_type(struct irq_data *id, unsigned type)
 {
 	unsigned irq = id->irq;
-	unsigned offset = irq - GPIO_IRQ_START;
+	unsigned offset = irq;
 	struct n329_pinctrl_data *d = irq_get_chip_data(irq);
 	unsigned pinid, bank, pin;
 
@@ -288,7 +291,7 @@ static int n329_pinctrl_gpio_irq_set_type(struct irq_data *id, unsigned type)
 static void n329_pinctrl_gpio_irq_mask(struct irq_data *id)
 {
 	unsigned irq = id->irq;
-	unsigned offset = irq - GPIO_IRQ_START;
+	unsigned offset = irq;
 	struct n329_pinctrl_data *d = irq_get_chip_data(irq);
 	unsigned pinid, bank, pin;
 	void __iomem *reg;
@@ -309,7 +312,7 @@ static void n329_pinctrl_gpio_irq_mask(struct irq_data *id)
 static void n329_pinctrl_gpio_irq_unmask(struct irq_data *id)
 {
 	unsigned irq = id->irq;
-	unsigned offset = irq - GPIO_IRQ_START;
+	unsigned offset = irq;
 	struct n329_pinctrl_data *d = irq_get_chip_data(irq);
 	unsigned pinid, bank, pin;
 	void __iomem *reg;
@@ -372,10 +375,9 @@ static irqreturn_t n329_pinctrl_gpio_interrupt(int irq, void *dev_id)
 
 				/* Determine the software interrupt */
 				sw_irq = n329_pinid_to_offset(PINID(bank, pin));
-				sw_irq += GPIO_IRQ_START;
 
 				/* Call the software interrupt handler */
-				generic_handle_irq(sw_irq);
+				generic_handle_irq(irq_find_mapping(d->domain, sw_irq));
 	
 				/* Clear the interrupt */
 				if (bank & 0x01)
@@ -846,8 +848,7 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	struct clk *clk_mux;
 	struct clk *clk_div;
 	struct clk *clk_gate;
-	unsigned sw_irq;
-	int ret;
+	int irq_base, ret;
 
 	/* We must have at least one child gpio node */
 	gp = n329_get_first_gpio(pdev);
@@ -914,11 +915,31 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	}
 
 	/* Configure GPIO IRQs */
-	for (sw_irq = 0; sw_irq < d->soc->npins; sw_irq++) {
-		irq_set_chip_data(sw_irq + GPIO_IRQ_START, d);
-		irq_set_chip(sw_irq + GPIO_IRQ_START, &n329_irqchip);
-		set_irq_flags(sw_irq + GPIO_IRQ_START, IRQF_VALID);
+	irq_base = irq_alloc_descs(-1, 0, d->soc->npins, numa_node_id());
+	if (irq_base < 0) {
+		ret = irq_base;
+		dev_err(&pdev->dev, "Couldn't register N329 gpio irq descriptors\n");
+		goto err_unmapio;
 	}
+	d->domain = irq_domain_add_legacy(gp, d->soc->npins, irq_base, 0,
+					     &irq_domain_simple_ops, NULL);
+	if (!d->domain) {
+		ret = -ENODEV;
+		goto err_free_descs;
+	}
+
+#if 0
+	irq_set_chip_data(sw_irq + GPIO_IRQ_START, d);
+	irq_set_chip(sw_irq + GPIO_IRQ_START, &n329_irqchip);
+	set_irq_flags(sw_irq + GPIO_IRQ_START, IRQF_VALID);
+#endif
+
+#if 0
+	/* setup one handler for each entry */
+	irq_set_chained_handler(port->irq, mxs_gpio_irq_handler);
+	irq_set_handler_data(port->irq, port);
+#endif
+
 	d->hw_irq0 = irq_of_parse_and_map(gp, 0);
 	d->hw_irq1 = irq_of_parse_and_map(gp, 1);
 	d->hw_irq2 = irq_of_parse_and_map(gp, 2);
@@ -937,11 +958,13 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 		dev_err(&pdev->dev, "Couldn't register N329 pinctrl driver\n");
 		ret = gpiochip_remove(&d->gc);
 		ret = -EINVAL;
-		goto err_unmapio;
+		goto err_free_descs;
 	}
 
 	return 0;
 
+err_free_descs:
+	irq_free_descs(irq_base, d->soc->npins);
 err_unmapio:
 	if (d->gcr_base)
 		iounmap(d->gcr_base);
