@@ -34,6 +34,12 @@
 #define SUFFIX_LEN		4
 #define BADPINID		0xffff
 
+/* Each GPIO pin can be mapped to one of four IRQ sources */
+#define GPIO_IRQ_SRC_0	0
+#define GPIO_IRQ_SRC_1	1
+#define GPIO_IRQ_SRC_2	2
+#define GPIO_IRQ_SRC_3	3
+
 /* Must start after 32 N329XX AIC hardware IRQs */
 #define GPIO_IRQ_START	32
 
@@ -104,7 +110,7 @@ static int n329_pinctrl_gpio_get(struct n329_pinctrl_data *p, unsigned pinid)
 }
 
 static void n329_pinctrl_gpio_set(struct n329_pinctrl_data *p, unsigned pinid, int state) 
-{	
+{
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
 	void __iomem *reg = p->gpio_base + (bank << 4) + 0x08;
@@ -160,7 +166,7 @@ err:
 	return 0;
 }
 
-static int n329_pinctrl_gpio_get_hwirq(struct n329_pinctrl_data *p, 
+static int n329_pinctrl_get_irq_source(struct n329_pinctrl_data *p, 
 				unsigned pinid) 
 {
 	unsigned bank = PINID_TO_BANK(pinid);
@@ -174,7 +180,7 @@ static int n329_pinctrl_gpio_get_hwirq(struct n329_pinctrl_data *p,
 	return irq + 2;
 }
 
-static void n329_pinctrl_gpio_set_hwirq(struct n329_pinctrl_data *p, 
+static void n329_pinctrl_set_irq_source(struct n329_pinctrl_data *p, 
 				unsigned pinid, unsigned irq) 
 {
 	unsigned bank = PINID_TO_BANK(pinid);
@@ -186,6 +192,21 @@ static void n329_pinctrl_gpio_set_hwirq(struct n329_pinctrl_data *p,
 	val &= ~(0x03 << (pin << 1));
 	val |= (((irq - 2) & 0x03) << (pin << 1));
 	writel(val, reg);
+}
+
+static int n329_pinctrl_irq_to_source(struct n329_pinctrl_data *p, int irq)
+{
+	/* Match the IRQ to an IRQ source group */
+	if (irq == p->hw_irq0)
+		return GPIO_IRQ_SRC_0;
+	else if (irq == p->hw_irq1)
+		return GPIO_IRQ_SRC_1;
+	else if (irq == p->hw_irq2)
+		return GPIO_IRQ_SRC_2;
+	else if (irq == p->hw_irq3)
+		return GPIO_IRQ_SRC_3;
+
+	return -1;
 }
 
 static int n329_pinctrl_gpio_get_value(struct gpio_chip *gc, unsigned offset)
@@ -325,8 +346,8 @@ static void n329_pinctrl_gpio_irq_unmask(struct irq_data *id)
 	/* Make sure pin is an input */
 	n329_pinctrl_gpio_set_input(d, pinid);
 
-	/* Set the GPIO IRQ0 value */
-	n329_pinctrl_gpio_set_hwirq(d, pinid, d->hw_irq0);
+	/* Set the GPIO IRQ0 source group for this pin */
+	n329_pinctrl_set_irq_source(d, pinid, GPIO_IRQ_SRC_0);
 
 	/* Clear or set falling enable */
 	if (d->falling[bank] & (1 << pin)) {
@@ -347,16 +368,14 @@ static irqreturn_t n329_pinctrl_gpio_interrupt(int irq, void *dev_id)
 {
 	struct n329_pinctrl_data *d = dev_id;
 	unsigned bank, pin, clear, pinid;
-	unsigned long hwirq, source, i;
-	struct irq_data *id;
-	int offset;
+	unsigned long source, i;
+	int offset, srcgrp;
 	void __iomem *reg;
 
-	/* Get the hardware IRQ */
-	id = irq_get_irq_data(irq);
-	if (!id) 
+	/* Match the IRQ to an IRQ source group */
+	srcgrp = n329_pinctrl_irq_to_source(d, irq);
+	if (srcgrp < 0)
 		goto no_irq_data;
-	hwirq = id->hwirq;
 
 	/* Loop over each bank */
 	for (bank = 0; bank < N329_BANKS; bank++) {
@@ -374,8 +393,8 @@ static irqreturn_t n329_pinctrl_gpio_interrupt(int irq, void *dev_id)
 			pin = (unsigned) i;
 			pinid = PINID(bank, pin);
 
-			/* Only process interrupts with this id */
-			if (hwirq == n329_pinctrl_gpio_get_hwirq(d, pinid)) {
+			/* Only process interrupts matching this source group */
+			if (srcgrp == n329_pinctrl_get_irq_source(d, pinid)) {
 
 				/* Determine the virtual interrupt */
 				offset = n329_pinid_to_offset(PINID(bank, pin));
