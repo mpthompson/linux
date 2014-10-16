@@ -166,35 +166,38 @@ err:
 	return 0;
 }
 
-static int n329_pinctrl_get_irq_source(struct n329_pinctrl_data *p, 
+static unsigned n329_pinctrl_get_irq_source(struct n329_pinctrl_data *p, 
 				unsigned pinid) 
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
+	unsigned shift = (1 << pin);
 	void __iomem *reg = p->gpio_base + 0x80 + (bank << 2);
 
 	/* Return the irq index for the GPIO pin */
-	int irq = (int) (readl(reg) >> (pin << 1)) & 0x03;
+	unsigned irq_src = (int) (readl(reg) >> shift) & 0x03;
 
 	/* GPIO IRQs are offset by two */
-	return irq + 2;
+	return irq_src;
 }
 
 static void n329_pinctrl_set_irq_source(struct n329_pinctrl_data *p, 
-				unsigned pinid, unsigned irq) 
+				unsigned pinid, unsigned irq_src) 
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
+	unsigned shift = (1 << pin);
 	void __iomem *reg = p->gpio_base + 0x80 + (bank << 2);
 
-	/* Update the register with the new irq value */
+	/* Update the soure register with the irq source */
 	u32 val = readl(reg);
-	val &= ~(0x03 << (pin << 1));
-	val |= (((irq - 2) & 0x03) << (pin << 1));
+	val &= ~(0x03 << shift);
+	val |= ((irq_src & 0x03) << shift);
 	writel(val, reg);
 }
 
-static int n329_pinctrl_irq_to_source(struct n329_pinctrl_data *p, int irq)
+static int n329_pinctrl_irq_to_irq_source(struct n329_pinctrl_data *p, 
+				int irq)
 {
 	/* Match the IRQ to an IRQ source group */
 	if (irq == p->hw_irq0)
@@ -373,7 +376,7 @@ static irqreturn_t n329_pinctrl_gpio_interrupt(int irq, void *dev_id)
 	void __iomem *reg;
 
 	/* Match the IRQ to an IRQ source group */
-	srcgrp = n329_pinctrl_irq_to_source(d, irq);
+	srcgrp = n329_pinctrl_irq_to_irq_source(d, irq);
 	if (srcgrp < 0)
 		goto no_irq_data;
 
