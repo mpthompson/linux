@@ -51,6 +51,7 @@ struct n329_pinctrl_data {
 	void __iomem *gpio_base;
 	struct n329_pinctrl_soc_data *soc;
 	struct irq_domain *domain;
+	spinlock_t lock;
 	unsigned hw_irq0;
 	unsigned hw_irq1;
 	unsigned hw_irq2;
@@ -116,12 +117,17 @@ static void n329_pinctrl_gpio_set(struct n329_pinctrl_data *pc,
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
 	void __iomem *reg = pc->gpio_base + (bank << 4) + 0x08;
+	unsigned long flags;
+
+	spin_lock_irqsave(&pc->lock, flags);
 
 	/* Set the pin out to state */
 	if (state)
 		writel(readl(reg) | (1 << pin), reg); 
 	else
 		writel(readl(reg) & ~(1 << pin), reg);
+
+	spin_unlock_irqrestore(&pc->lock, flags);
 }
 
 static void n329_pinctrl_gpio_set_input(struct n329_pinctrl_data *pc, 
@@ -130,9 +136,14 @@ static void n329_pinctrl_gpio_set_input(struct n329_pinctrl_data *pc,
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
 	void __iomem *reg = pc->gpio_base + (bank << 4);
+	unsigned long flags;
+
+	spin_lock_irqsave(&pc->lock, flags);
 
 	/* Set direction of pin to input mode */
 	writel(readl(reg) & ~(1 << pin), reg);
+
+	spin_unlock_irqrestore(&pc->lock, flags);
 }
 
 static void n329_pinctrl_gpio_set_output(struct n329_pinctrl_data *pc, 
@@ -141,9 +152,14 @@ static void n329_pinctrl_gpio_set_output(struct n329_pinctrl_data *pc,
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
 	void __iomem *reg = pc->gpio_base + (bank << 4);
+	unsigned long flags;
+
+	spin_lock_irqsave(&pc->lock, flags);
 
 	/* Set direction of pin to output mode */
 	writel(readl(reg) | (1 << pin), reg);
+
+	spin_unlock_irqrestore(&pc->lock, flags);
 }
 
 static void n329_pinctrl_gpio_set_falling(struct n329_pinctrl_data *pc, 
@@ -152,6 +168,9 @@ static void n329_pinctrl_gpio_set_falling(struct n329_pinctrl_data *pc,
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
 	void __iomem *reg = pc->gpio_base + 0xa0 + (bank << 2);
+	unsigned long flags;
+
+	spin_lock_irqsave(&pc->lock, flags);
 
 	/* Set or clear falling edge IRQ enable */
 	if (falling) {
@@ -159,6 +178,8 @@ static void n329_pinctrl_gpio_set_falling(struct n329_pinctrl_data *pc,
 	} else {
 		writel(readl(reg) & ~(1 << pin), reg);
 	}
+
+	spin_unlock_irqrestore(&pc->lock, flags);
 }
 
 static void n329_pinctrl_gpio_set_rising(struct n329_pinctrl_data *pc, 
@@ -167,6 +188,9 @@ static void n329_pinctrl_gpio_set_rising(struct n329_pinctrl_data *pc,
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
 	void __iomem *reg = pc->gpio_base + 0xa0 + (bank << 2);
+	unsigned long flags;
+
+	spin_lock_irqsave(&pc->lock, flags);
 
 	/* Set or clear rising edge IRQ enable */
 	if (rising) {
@@ -174,6 +198,8 @@ static void n329_pinctrl_gpio_set_rising(struct n329_pinctrl_data *pc,
 	} else {
 		writel(readl(reg) & ~(1 << (pin + 16)), reg);
 	}
+
+	spin_unlock_irqrestore(&pc->lock, flags);
 }
 
 static void n329_pinctrl_gpio_reset_trigger(struct n329_pinctrl_data *pc, 
@@ -210,6 +236,7 @@ static int n329_pinctrl_mux_select_gpio(struct n329_pinctrl_data *pc,
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
+	unsigned long flags;
 	void __iomem *reg;
 
 	/* Sanity checks */
@@ -221,8 +248,12 @@ static int n329_pinctrl_mux_select_gpio(struct n329_pinctrl_data *pc,
 	/* Mux register address */
 	reg = pc->gcr_base + 0x80 + (bank << 2);
 
+	spin_lock_irqsave(&pc->lock, flags);
+
 	/* Select the mux to enable gpio function on the indicated pin */
 	writel(readl(reg) & ~(0x3 << (pin << 1)), reg);
+
+	spin_unlock_irqrestore(&pc->lock, flags);
 
 	return 1;
 	
@@ -251,13 +282,19 @@ static void n329_pinctrl_set_irq_source(struct n329_pinctrl_data *pc,
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
 	unsigned shift = (1 << pin);
+	unsigned long flags;
+	u32 val;
 	void __iomem *reg = pc->gpio_base + 0x80 + (bank << 2);
 
+	spin_lock_irqsave(&pc->lock, flags);
+
 	/* Update the soure register with the irq source */
-	u32 val = readl(reg);
+	val = readl(reg);
 	val &= ~(0x03 << shift);
 	val |= ((irq_src & 0x03) << shift);
 	writel(val, reg);
+
+	spin_unlock_irqrestore(&pc->lock, flags);
 }
 
 static int n329_pinctrl_irq_to_irq_source(struct n329_pinctrl_data *pc, 
@@ -275,6 +312,25 @@ static int n329_pinctrl_irq_to_irq_source(struct n329_pinctrl_data *pc,
 
 	return -1;
 }
+
+#if 0
+static int n329_pinctrl_gpio_request(struct gpio_chip *gc, 
+				unsigned offset)
+{
+	return pinctrl_request_gpio(offset);
+}
+
+static void n329_pinctrl_gpio_free(struct gpio_chip *gc, 
+				unsigned offset)
+{
+	struct n329_pinctrl_data *pc = to_n329_pinctrl_data(gc);
+	unsigned pinid = n329_offset_to_pinid(offset);
+
+	pinctrl_free_gpio(offset);
+	n329_pinctrl_gpio_set_rising(pc, pinid, 0);
+	n329_pinctrl_gpio_set_falling(pc, pinid, 0);
+}
+#endif
 
 static int n329_pinctrl_gpio_get_value(struct gpio_chip *gc, 
 				unsigned offset)
@@ -343,7 +399,6 @@ static int n329_pinctrl_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
 {
 	struct n329_pinctrl_data *pc = to_n329_pinctrl_data(gc);
 	return irq_find_mapping(pc->domain, offset);
-	return (int) offset + GPIO_IRQ_START;
 }
 
 static int n329_pinctrl_gpio_irq_set_type(struct irq_data *id, unsigned type)
@@ -351,10 +406,15 @@ static int n329_pinctrl_gpio_irq_set_type(struct irq_data *id, unsigned type)
 	struct n329_pinctrl_data *pc = irq_get_chip_data(id->irq);
 	unsigned offset = id->hwirq;
 	unsigned pinid, bank, pin;
+	int ret;
 
 	/* We only support rising and falling types */
 	if (type & ~(IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING))
 		return -EINVAL;
+
+	ret = gpio_lock_as_irq(&pc->gc, offset);
+	if (ret)
+		return ret;
 
 	pinid = n329_offset_to_pinid(offset);
 	if (pinid == BADPINID)
@@ -375,7 +435,30 @@ static int n329_pinctrl_gpio_irq_set_type(struct irq_data *id, unsigned type)
 		pc->falling[bank] &= ~(1 << pin);
 	}
 
+	__irq_set_handler_locked(id->irq, handle_edge_irq);
+
 	return 0;
+}
+
+static void n329_pinctrl_gpio_irq_shutdown(struct irq_data *id)
+{
+	struct n329_pinctrl_data *pc = irq_get_chip_data(id->irq);
+	unsigned offset = id->hwirq;
+
+	/* This GPIO is no longer used exclusively for IRQ */
+	gpio_unlock_as_irq(&pc->gc, offset);
+}
+
+static void n329_pinctrl_gpio_irq_ack(struct irq_data *id)
+{
+	struct n329_pinctrl_data *pc = irq_get_chip_data(id->irq);
+	unsigned offset = id->hwirq;
+	unsigned pinid = n329_offset_to_pinid(offset);
+	if (pinid == BADPINID)
+		return;
+
+	/* Clear the interrupt trigger */
+	n329_pinctrl_gpio_reset_trigger(pc, pinid);
 }
 
 static void n329_pinctrl_gpio_irq_mask(struct irq_data *id)
@@ -446,11 +529,11 @@ static irqreturn_t n329_pinctrl_gpio_interrupt(int irq, void *dev_id)
 				/* Map pin to IRQ offset within GPIO IRQ domain */
 				offset = n329_pinid_to_offset(pinid);
 
+				/* Clear the edge trigger so we don't miss edges*/
+				n329_pinctrl_gpio_reset_trigger(pc, pinid);
+
 				/* Call the software interrupt handler */
 				generic_handle_irq(irq_find_mapping(pc->domain, offset));
-	
-				/* Clear the interrupt trigger */
-				n329_pinctrl_gpio_reset_trigger(pc, pinid);
 			}
 		}
 	}
@@ -465,7 +548,9 @@ static struct irq_chip n329_irqchip = {
 	.irq_disable = n329_pinctrl_gpio_irq_mask,
 	.irq_unmask = n329_pinctrl_gpio_irq_unmask,
 	.irq_mask = n329_pinctrl_gpio_irq_mask,
+	.irq_ack = n329_pinctrl_gpio_irq_ack,
 	.irq_set_type = n329_pinctrl_gpio_irq_set_type,
+	.irq_shutdown = n329_pinctrl_gpio_irq_shutdown,
 };
 
 static int n329_get_groups_count(struct pinctrl_dev *pctldev)
@@ -944,6 +1029,8 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	pc->dev = &pdev->dev;
 	pc->soc = soc;
 
+	spin_lock_init(&pc->lock);
+
 	pc->gpio_base = of_iomap(np, 0);
 	pc->gcr_base = of_iomap(np, 1);
 	if (!pc->gpio_base || !pc->gcr_base) {
@@ -964,6 +1051,10 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	pc->gc.ngpio = pc->soc->npins;
 	pc->gc.owner = THIS_MODULE;
 
+#if 0
+	pc->gc.request = n329_pinctrl_gpio_request;
+	pc->gc.free = n329_pinctrl_gpio_free;
+#endif
 	pc->gc.direction_input = n329_pinctrl_gpio_dir_in;
 	pc->gc.direction_output = n329_pinctrl_gpio_dir_out;
 	pc->gc.get = n329_pinctrl_gpio_get_value;
