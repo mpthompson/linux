@@ -23,7 +23,26 @@
 	model = "N32905 NHS-55FA93-1-IN-1M11 Demo Board";
 	compatible = "nuvoton,n32905-demo-board", "nuvoton,n32905", "nuvoton,n329";
 
+	ahb@B0000000 {
+		mmc0: sic@B1006000 {
+			compatible = "nuvoton,n32905-mmc";
+			pinctrl-names = "default";
+			pinctrl-0 = <&mmc0_pins &mmc0_io_pins>;
+			status = "okay";
+		};
+	};
+
 	apb@B8000000 {
+		pinctrl@B8001000 {
+			mmc0_io_pins: mmc0-io-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPA00__GPIOA_D00
+					N32905_PAD_GPA01__GPIOA_D01
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+		};
 		uart1: serial@B8008100 {
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart1_pins>;

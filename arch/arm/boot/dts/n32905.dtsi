@@ -28,6 +28,7 @@
 		gpio = &gpio;
 		serial0 = &uart0;
 		serial1 = &uart1;
+		mmc0 = &mmc0;
 	};
 
 	memory {
@@ -80,6 +81,13 @@
 		i2s@B1001000 {
 			compatible = "nuvoton,i2s";
 			reg = <0xB1001000 0x1000>;
+		};
+
+		mmc0: sic@B1006000 {
+			reg = <0xB1006000 0x1000>;
+			interrupts = <17>;
+			clocks = <&clks 41>, <&clks 42>, <&clks 43>, <&clks 107>;
+			status = "disabled";
 		};
 	};
 
@@ -136,6 +144,20 @@
 				nuvoton,pinmux-ids = <
 					N32905_PAD_GPA10__URTXD
 					N32905_PAD_GPA11__URRXD
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+
+			mmc0_pins: mmc0-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPE02__SDDAT_00
+					N32905_PAD_GPE03__SDDAT_01
+					N32905_PAD_GPE04__SDDAT_02
+					N32905_PAD_GPE05__SDDAT_03
+					N32905_PAD_GPE06__SDCMD
+					N32905_PAD_GPE07__SDCLK
+					N32905_PAD_GPA01__SD_CD
 				>;
 				nuvoton,pull-up = <N329_PULL_DISABLE>;
 			};
