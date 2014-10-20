@@ -437,7 +437,7 @@ static void __init n329_clocks_init(struct device_node *np)
 	clks[tic_pclk] = n329_clk_gate("tic_pclk", "pclk_clk", REG_APBCLK, 24);
 	clks[kpi_pclk] = n329_clk_gate("kpi_pclk", "pclk_clk", REG_APBCLK, 25);
 
-	/* check for errors */
+	/* Check for errors */
 	for (i = 0; i < ARRAY_SIZE(clks); i++) {
 		if (IS_ERR(clks[i])) {
 			pr_err("N329 clk %d: register failed with %ld\n",
@@ -450,7 +450,7 @@ static void __init n329_clocks_init(struct device_node *np)
 	clk_data.clk_num = ARRAY_SIZE(clks);
 	of_clk_add_provider(np, of_clk_src_onecell_get, &clk_data);
 
-	/* enable certain clocks */
+	/* Enable certain clocks */
 	for (i = 0; i < ARRAY_SIZE(clks_init_on); i++) {
 		clk_prepare_enable(clks[clks_init_on[i]]);
 	}

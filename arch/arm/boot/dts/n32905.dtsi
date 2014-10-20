@@ -86,7 +86,7 @@
 		mmc0: sic@B1006000 {
 			reg = <0xB1006000 0x1000>;
 			interrupts = <17>;
-			clocks = <&clks 41>, <&clks 42>, <&clks 43>, <&clks 107>;
+			clocks = <&clks 43>, <&clks 107>;
 			status = "disabled";
 		};
 	};

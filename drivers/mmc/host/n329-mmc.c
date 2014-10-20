@@ -167,16 +167,8 @@ struct n329_sd_host {
 	dma_addr_t physical_address; /* DMA physical address */
 	unsigned int total_length;
 
-	struct clk *sd_src_clk;
-	struct clk *sd_div_clk;
 	struct clk *sd_clk;
 	struct clk *sic_clk;
-
-#if 0
-	struct mmc_request		*mrq;
-	struct mmc_command		*cmd;
-	struct mmc_data			*data;
-#endif
 
 	void __iomem *base;
 	int wp_gpio;
@@ -185,6 +177,7 @@ struct n329_sd_host {
 	int in_use_index;
 	int transfer_index;
 	spinlock_t lock;
+	struct device  *dev;
 
 	struct timer_list timer;
 };
@@ -861,9 +854,14 @@ static void n329_sd_timeout_timer(unsigned long data)
 }
 
 static void n329_sd_set_clock(struct n329_sd_host *host,
-				unsigned clockrate)
+				unsigned long clockrate)
 {
-	// XXX TBD
+	/* Don't allow a zero rate */
+	if (clockrate == 0)
+		return;
+
+	/* Set the clock rate of the SD clock */
+	clk_set_rate(host->sd_clk, clockrate);
 }
 
 static int n329_mmc_get_cd(struct mmc_host *mmc)
@@ -933,6 +931,7 @@ static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 			else
 				/* ios->clock unit is Hz */
 				n329_sd_set_clock(host, ios->clock);
+
 			udelay(1000);
 
 			n329_sd_write(host, n329_sd_read(host, REG_SDCR) |
@@ -1051,6 +1050,8 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	host->bus_mode = MMC_BUS_WIDTH_1;
 	host->port = 0;
 	host->base = base;
+	host->dev = &pdev->dev;
+
 	spin_lock_init(&host->lock);
 
 	host->buffer = dma_alloc_coherent(&pdev->dev, MCI_BUFSIZE,
@@ -1079,23 +1080,14 @@ static int n329_mmc_probe(struct platform_device *pdev)
 		host->wp_gpio = -1;
 	}
 
-	host->sd_src_clk = of_clk_get(np, 0);
-	host->sd_div_clk = of_clk_get(np, 1);
-	host->sd_clk = of_clk_get(np, 2);
-	host->sic_clk = of_clk_get(np, 3);
-	if (IS_ERR(host->sd_src_clk) || IS_ERR(host->sd_div_clk) ||
-		IS_ERR(host->sd_clk) || IS_ERR(host->sic_clk)) {
+	host->sd_clk = of_clk_get(np, 0);
+	host->sic_clk = of_clk_get(np, 1);
+	if (IS_ERR(host->sd_clk) || IS_ERR(host->sic_clk)) {
 		ret = -ENODEV;
 		goto out_dma_free;
 	}
-	clk_prepare_enable(host->sd_src_clk);
-	clk_prepare_enable(host->sd_div_clk);
 	clk_prepare_enable(host->sd_clk);
 	clk_prepare_enable(host->sic_clk);
-
-	pr_info("SD SRC clock = %lu\n", clk_get_rate(host->sd_src_clk));
-	pr_info("SD DIV clock = %lu\n", clk_get_rate(host->sd_div_clk));
-	pr_info("SD clock = %lu\n", clk_get_rate(host->sd_clk));
 
 	n329_sd_disable(host);
 	n329_sd_enable(host);
@@ -1143,8 +1135,6 @@ static int n329_mmc_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(host->sic_clk);
 	clk_disable_unprepare(host->sd_clk);
-	clk_disable_unprepare(host->sd_div_clk);
-	clk_disable_unprepare(host->sd_src_clk);
 
 	if (host->buffer)
 		dma_free_coherent(&pdev->dev, MCI_BUFSIZE, host->buffer, host->physical_address);
