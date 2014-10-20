@@ -20,6 +20,7 @@
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/sys_soc.h>
+#include <linux/semaphore.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
@@ -33,6 +34,14 @@
 
 static u32 chipid;
 static u32 socid;
+
+/* Semaphore for preventing concurrent DMAC devices activity */
+DEFINE_SEMAPHORE(dmac_sem); 
+EXPORT_SYMBOL(dmac_sem);
+
+/* Semaphore for preventing concurrent FMI devices activity */
+DEFINE_SEMAPHORE(fmi_sem);
+EXPORT_SYMBOL(fmi_sem);
 
 static void __iomem *wtcr_addr;
 
