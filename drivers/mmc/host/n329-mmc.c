@@ -263,7 +263,7 @@ static void n329_sd_enable(struct n329_sd_host *host)
 	if (n329_sd_select_port(host) != 0)
 		return;
 
-	/* SDNWR = 9+1 clock */
+	/* SDNWR = 9 + 1 clock */
 	n329_sd_write(host, (n329_sd_read(host, REG_SDCR) & ~SDCR_SDNWR) |
 					0x09000000, REG_SDCR);
 
@@ -273,8 +273,10 @@ static void n329_sd_enable(struct n329_sd_host *host)
 
 #if 0
 	// set GPA0 to GPIO mode for SD port 0 write protect
-	w55fa93_sd_write(REG_GPAFUN, w55fa93_sd_read(REG_GPAFUN) & (~MF_GPA0));     // set GPIO to GPIO mode for write protect
-	w55fa93_sd_write(REG_GPIOA_OMD, w55fa93_sd_read(REG_GPIOA_OMD) & (~BIT(0)));  // set GPA0 to input mode
+	// set GPIO to GPIO mode for write protect
+	w55fa93_sd_write(REG_GPAFUN, w55fa93_sd_read(REG_GPAFUN) & (~MF_GPA0));
+	// set GPA0 to input mode
+	w55fa93_sd_write(REG_GPIOA_OMD, w55fa93_sd_read(REG_GPIOA_OMD) & (~BIT(0)));
 #endif
 }
 
@@ -288,14 +290,67 @@ static void n329_sd_disable(struct n329_sd_host *host)
 					(~FMI_SD_EN), REG_FMICR);
 }
 
+/* Handle transmitted data */
 static void n329_sd_handle_transmitted(struct n329_sd_host *host)
 {
-	// XXX TBD
+	if (n329_sd_read(host, REG_SDISR) & SDISR_CRC_IF)
+		n329_sd_write(host, SDISR_CRC_IF, REG_SDISR);
+
+	/* Check read/busy */
+	if (host->port == 0)
+		n329_sd_write(host, n329_sd_read(host, REG_SDCR) | 
+						SDCR_CLK_KEEP, REG_SDCR);
+	else
+		printk("ERROR: Don't support SD port %d to transmitted data !\n", host->port);
 }
 
+/* Handle after a dma read */
 static void n329_sd_post_dma_read(struct n329_sd_host *host)
 {
-	// XXX TBD
+	struct mmc_data *data;
+	struct mmc_command *cmd;
+	unsigned i, len, size;
+	unsigned *dmabuf = host->buffer;
+
+	cmd = host->cmd;
+	if (!cmd) {
+		return;
+	}
+
+	data = cmd->data;
+	if (!data) {
+		return;
+	}
+
+	size = data->blksz * data->blocks;
+	len = data->sg_len;
+
+	for (i = 0; i < len; i++) {
+		int amount;
+		unsigned *sgbuffer;
+		struct scatterlist *sg;
+		char *tmpv;
+
+		sg = &data->sg[i];
+
+		sgbuffer = kmap_atomic(sg_page(sg)) + sg->offset;
+		amount = min(size, sg->length);
+		size -= amount;
+
+		tmpv = (char *) dmabuf;
+		memcpy(sgbuffer, tmpv, amount);
+		tmpv += amount;
+		dmabuf = (unsigned *) tmpv;
+
+		flush_kernel_dcache_page(sg_page(sg));
+
+		kunmap_atomic(sgbuffer);
+
+		data->bytes_xfered += amount;
+
+		if (size == 0)
+			break;
+	}
 }
 
 static irqreturn_t n329_sd_irq(int irq, void *devid)
@@ -658,7 +713,7 @@ static void n329_sd_send_stop(struct n329_sd_host *host,
 		if (host->port == 0)
 			sd_ri_timeout = 0;
 
-		// Timeout for STOP CMD
+		/* Timeout for STOP CMD */
 		n329_sd_write(host, 0x1fff, REG_SDTMOUT);
 	}
 
@@ -864,7 +919,33 @@ static void n329_sd_set_clock(struct n329_sd_host *host,
 	clk_set_rate(host->sd_clk, clockrate);
 }
 
-static int n329_mmc_get_cd(struct mmc_host *mmc)
+/* Check write protect pin */
+static int n329_sd_get_ro(struct mmc_host *mmc)
+{
+#if 0
+	struct w55fa93_sd_host *host = mmc_priv(mmc);
+
+	// use GPA0 as the write protect pin for SD port 0
+	if (host->port == 0)
+	{
+		if ((w55fa93_sd_read(REG_GPIOA_PIN) & BIT0) == 0)
+		{
+			//w55fa93_sd_debug("w55fa93_sd_get_ro(): SD port %d is write unprotected.\n", host->port);
+			return 0;   // write unprotected
+		}
+		else
+		{
+			//w55fa93_sd_debug("w55fa93_sd_get_ro(): SD port %d is write protected.\n", host->port);
+			return 1;   // write protected
+		}
+	}
+#endif
+
+	/* No write protect */
+	return 0;
+}
+
+static int n329_sd_get_cd(struct mmc_host *mmc)
 {
 	struct n329_sd_host *host = mmc_priv(mmc);
 	int ret;
@@ -879,7 +960,7 @@ static int n329_mmc_get_cd(struct mmc_host *mmc)
 	return ret;
 }
 
-static void n329_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
+static void n329_sd_request(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct n329_sd_host *host = mmc_priv(mmc);
 	int card_present;
@@ -904,7 +985,7 @@ static void n329_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		n329_sd_send_request(host);
 }
 
-static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+static void n329_sd_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct n329_sd_host *host = mmc_priv(mmc);
 
@@ -956,7 +1037,7 @@ static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	up(&fmi_sem);
 }
 
-static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
+static void n329_sd_enable_sdio_irq(struct mmc_host *mmc, int enable)
 {
 	struct n329_sd_host *host = mmc_priv(mmc);
 
@@ -985,12 +1066,12 @@ static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	}
 }
 
-static const struct mmc_host_ops n329_mmc_ops = {
-	.request = n329_mmc_request,
-	.get_ro = mmc_gpio_get_ro,
-	.get_cd = n329_mmc_get_cd,
-	.set_ios = n329_mmc_set_ios,
-	.enable_sdio_irq = n329_mmc_enable_sdio_irq,
+static const struct mmc_host_ops n329_sd_ops = {
+	.request = n329_sd_request,
+	.get_ro = n329_sd_get_ro,
+	.get_cd = n329_sd_get_cd,
+	.set_ios = n329_sd_set_ios,
+	.enable_sdio_irq = n329_sd_enable_sdio_irq,
 };
 
 static struct platform_device_id n329_ssp_ids[] = {
@@ -1033,7 +1114,7 @@ static int n329_mmc_probe(struct platform_device *pdev)
 		goto out_mmc_free;
 	}
 
-	mmc->ops = 	&n329_mmc_ops;
+	mmc->ops = 	&n329_sd_ops;
 	mmc->f_min = 300000;
 	mmc->f_max = 24000000;
 	mmc->ocr_avail = MCI_VDD_AVAIL;
