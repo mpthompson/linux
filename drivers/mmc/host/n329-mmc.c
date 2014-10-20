@@ -1118,7 +1118,8 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	mmc->f_min = 300000;
 	mmc->f_max = 24000000;
 	mmc->ocr_avail = MCI_VDD_AVAIL;
-	mmc->caps = MMC_CAP_4_BIT_DATA;
+	mmc->caps = MMC_CAP_SD_HIGHSPEED | MMC_CAP_MMC_HIGHSPEED | 
+				MMC_CAP_4_BIT_DATA | MMC_CAP_SDIO_IRQ;
 
 	mmc->max_seg_size  = MCI_BUFSIZE;
 	mmc->max_segs      = MCI_BLKATONCE;
