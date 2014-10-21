@@ -34,6 +34,13 @@
 #define SUFFIX_LEN		4
 #define BADPINID		0xffff
 
+
+#define HW_GCR_GPAFUN	0x80	/* R/W GPIO A Multi Function Control */
+#define HW_GCR_GPBFUN	0x84	/* R/W GPIO B Multi Function Control */
+#define HW_GCR_GPCFUN	0x88	/* R/W GPIO C Multi Function Control */
+#define HW_GCR_GPDFUN	0x8C	/* R/W GPIO D Multi Function Control */
+#define HW_GCR_GPEFUN	0x90	/* R/W GPIO E Multi Function Control */
+
 #define HW_GPIOA_OMD	0x00	/* R/W GPIO Port A Output Mode Enable */
 #define HW_GPIOA_PUEN	0x04	/* R/W GPIO Port A Pull-up Resistor Enable */
 #define HW_GPIOA_DOUT	0x08	/* R/W GPIO Port A Data Output Value */
@@ -287,7 +294,7 @@ static int n329_pinctrl_mux_select_gpio(struct n329_pinctrl_data *pc,
 		goto err;
 
 	/* Mux register address */
-	reg = pc->gcr_base + HW_IRQSRCGPA + (bank << 2);
+	reg = pc->gcr_base + HW_GCR_GPAFUN + (bank << 2);
 
 	spin_lock_irqsave(&pc->lock, flags);
 
@@ -766,7 +773,7 @@ static int n329_pinctrl_enable(struct pinctrl_dev *pctldev,
 	for (i = 0; i < g->npins; i++) {
 		bank = PINID_TO_BANK(g->pins[i]);
 		pin = PINID_TO_PIN(g->pins[i]);
-		reg = pc->gcr_base + 0x80 + (bank << 4);
+		reg = pc->gcr_base + HW_IRQSRCGPA + (bank << 2);
 		shift = pin << 1;
 
 		val = readl(reg);
