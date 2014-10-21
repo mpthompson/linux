@@ -36,7 +36,6 @@
 
 #define DRIVER_NAME	"n329-mmc"
 
-#define N329_ADDR(x)		((void __iomem *)0xF0000000 + (x))
 #define BITS(start,end)		((0xFFFFFFFF >> (31 - start)) & (0xFFFFFFFF << end))
 
 /* Serial Interface Controller (SIC) Registers */
@@ -129,11 +128,8 @@
 #define REG_SDBLEN		(FMI_BA + 0x038)   	/* SD block length register */
 #define REG_SDTMOUT 	(FMI_BA + 0x03C)   	/* SD block length register */
 
-#define FL_SENT_COMMAND 	(1 << 0)
-#define FL_SENT_STOP    	(1 << 1)
-
 #define MCI_BLKSIZE         512
-#define MCI_MAXBLKSIZE      4095
+#define MCI_MAXBLKSIZE      4096
 #define MCI_BLKATONCE       255
 #define MCI_BUFSIZE         (MCI_BLKSIZE * MCI_BLKATONCE)
 
@@ -141,6 +137,10 @@
 							 MMC_VDD_29_30 | MMC_VDD_30_31 | \
 							 MMC_VDD_31_32 | MMC_VDD_32_33 | \
 							 MMC_VDD_33_34)
+
+#if 0
+#define FL_SENT_COMMAND 	(1 << 0)
+#define FL_SENT_STOP    	(1 << 1)
 
 /* Driver thread command */
 #define SD_EVENT_NONE       0x00000000
@@ -150,38 +150,29 @@
 #define SD_EVENT_CLK_KEEP0  0x00001000
 #define SD_EVENT_CLK_KEEP1  0x00010000
 
+#endif
+
 enum n329_sic_type {
 	N32905_SIC
 };
 
-struct n329_sd_host {
-	struct mmc_host *mmc;
+struct n329_mmc_host {
+	struct mmc_host	*mmc;
+	struct mmc_request *mrq;
 	struct mmc_command *cmd;
-	struct mmc_request *request;
+	struct mmc_data	*data;
 
-	unsigned flags;				/* Flag indicating command has been sent */
-	u32 bus_mode;   			/* MMC_BUS_WIDTH_1 | MMC_BUS_WIDTH_4 */
-	u32 port;					/* SD port 0 | 1 | 2 */
-
-	unsigned int *buffer;		/* DMA buffer used for transmitting */
-	dma_addr_t physical_address; /* DMA physical address */
-	unsigned int total_length;
-
+	int irq;
+	int wp_gpio;
+	int sdio_irq_en;
+	spinlock_t lock;
+	unsigned char bus_width;
 	struct clk *sd_clk;
 	struct clk *sic_clk;
-
 	void __iomem *base;
-	int wp_gpio;
-	int present;
-	int irq;
-	int in_use_index;
-	int transfer_index;
-	spinlock_t lock;
-	struct device  *dev;
-
-	struct timer_list timer;
 };
 
+#if 0
 /* State variables and queues for SD port 0 */
 static struct n329_sd_host *sd_host;
 static volatile int sd_event = 0;
@@ -298,7 +289,7 @@ static void n329_sd_handle_transmitted(struct n329_sd_host *host)
 
 	/* Check read/busy */
 	if (host->port == 0)
-		n329_sd_write(host, n329_sd_read(host, REG_SDCR) | 
+		n329_sd_write(host, n329_sd_read(host, REG_SDCR) |
 						SDCR_CLK_KEEP, REG_SDCR);
 	else
 		printk("ERROR: Don't support SD port %d to transmitted data !\n", host->port);
@@ -1065,13 +1056,295 @@ static void n329_sd_enable_sdio_irq(struct mmc_host *mmc, int enable)
 						~SDIER_WKUP_EN, REG_SDIER);
 	}
 }
+#endif
 
-static const struct mmc_host_ops n329_sd_ops = {
-	.request = n329_sd_request,
-	.get_ro = n329_sd_get_ro,
-	.get_cd = n329_sd_get_cd,
-	.set_ios = n329_sd_set_ios,
-	.enable_sdio_irq = n329_sd_enable_sdio_irq,
+static inline void n329_mmc_write(struct n329_mmc_host *host, u32 value, u32 addr)
+{
+	__raw_writel(value, host->base + addr);
+}
+
+static inline u32 n329_mmc_read(struct n329_mmc_host *host, u32 addr)
+{
+	return __raw_readl(host->base + addr);
+}
+
+static irqreturn_t n329_mmc_irq(int irq, void *devid)
+{
+	struct n329_mmc_host *host = devid;
+	unsigned status;
+
+	status = n329_mmc_read(host, REG_SDISR);
+
+	/* SDIO interrupt? */
+	if (status & SDISR_SDIO_IF) {
+
+		/* Do something here */
+
+		/* Clear the interrupt */
+		n329_mmc_write(host, SDISR_SDIO_IF, REG_SDISR);
+	}
+
+	/* Block transfer done? */
+	if (status & SDISR_BLKD_IF) {
+
+		/* Do something here */
+
+		/* Clear the interrupt */
+		n329_mmc_write(host, SDISR_BLKD_IF, REG_SDISR);
+	}
+
+	/* Card insert/remove detected? */
+	if (status & SDISR_CD_IF) {
+
+		/* Do something here */
+
+		/* Clear the interrupt */
+		n329_mmc_write(host, SDISR_CD_IF, REG_SDISR);
+	}
+
+	return IRQ_HANDLED;
+}
+
+static int n329_mmc_reset(struct n329_mmc_host *host)
+{
+	/* Reset DMAC */
+	n329_mmc_write(host, DMAC_SWRST, REG_DMACCSR);
+	while (n329_mmc_read(host, REG_DMACCSR) & DMAC_SWRST);
+
+	/* Reset FMI */
+	n329_mmc_write(host, FMI_SWRST, REG_FMICR);
+	while (n329_mmc_read(host, REG_FMICR) & FMI_SWRST);
+
+	/* Enable DMAC */
+	n329_mmc_write(host, DMAC_EN, REG_DMACCSR);
+
+	/* Enable SD */
+	n329_mmc_write(host, FMI_SD_EN, REG_FMICR);
+
+	/* Reset SD internal state */
+	n329_mmc_write(host, SDCR_SWRST, REG_SDCR);
+	while (n329_mmc_read(host, REG_SDCR) & SDCR_SWRST);
+
+	/* Enable SD card detect pin */
+	n329_mmc_write(host, n329_mmc_read(host, REG_SDIER) |
+					SDIER_CDSRC, REG_SDIER);
+
+	/* Write bit 1 to clear all SDISR */
+	n329_mmc_write(host, 0xFFFFFFFF, REG_SDISR);
+
+	/* Select SD port 0 */
+	n329_mmc_write(host, (n329_mmc_read(host, REG_SDCR) &	
+					~SDCR_SDPORT) | SDCR_SDPORT_0, REG_SDCR);
+
+	/* SDNWR = 9 + 1 clock */
+	n329_mmc_write(host, (n329_mmc_read(host, REG_SDCR) & ~SDCR_SDNWR) |
+					0x09000000, REG_SDCR);
+
+	/* SDCR_BLKCNT = 1 */
+	n329_mmc_write(host, (n329_mmc_read(host, REG_SDCR) & ~SDCR_BLKCNT) |
+					0x00010000, REG_SDCR);
+
+	return 0;
+}
+
+static int n329_mmc_setup_wp(struct n329_mmc_host *host, struct device *dev)
+{
+	int error;
+
+	if (!gpio_is_valid(host->wp_gpio))
+		return -ENODEV;
+
+	error = devm_gpio_request_one(dev, host->wp_gpio,
+						GPIOF_IN, DRIVER_NAME);
+	if (error < 0) {
+		dev_err(dev, "Failed to request GPIO %d, error %d\n",
+					host->wp_gpio, error);
+		return error;
+	}
+
+	error = gpio_direction_input(host->wp_gpio);
+	if (error < 0) {
+		dev_err(dev, "Failed to configure GPIO %d as input, error %d\n",
+					host->wp_gpio, error);
+		return error;
+	}
+
+	return 0;
+}
+
+static void n329_mmc_bc(struct n329_mmc_host *host)
+{
+	dev_dbg(mmc_dev(host->mmc), "%s: cmd=%d\n", __func__, (int) mmc_cmd_type(host->cmd));
+}
+
+static void n329_mmc_ac(struct n329_mmc_host *host)
+{
+	u32 csr;
+
+	dev_dbg(mmc_dev(host->mmc), "%s: cmd=%d\n", __func__, (int) mmc_cmd_type(host->cmd));
+
+	/* Make sure SD functionality is enabled */
+	if (~n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
+		n329_mmc_write(host, FMI_SD_EN, REG_FMICR);
+
+	/* Read the SDCR register */
+	csr = n329_sd_read(host, REG_SDCR);
+
+	/* Clear port, BLK_CNT, CMD_CODE, and all xx_EN fields */
+	csr &= 0x9f00c080;
+
+	/* Set the port selection bits */
+	csr |= SDCR_SDPORT_0;
+
+	/* Set command code and enable command out */
+	csr |= (cmd->opcode << 8) | SDCR_CO_EN;
+
+	/* Set the bus width bit */
+	csr |= host->bus_width == 1 ? SDCR_DBW : 0;
+
+	/* If a response is expected then allow maximum response latancy */
+	if (mmc_resp_type(host->cmd) != MMC_RSP_NONE) {
+
+		/* Set 136 bit response for R2, 48 bit response otherwise */
+		if (mmc_resp_type(cmd) == MMC_RSP_R2) {
+			csr |= SDCR_R2_EN;
+		} else {
+			csr |= SDCR_RI_EN;
+		}
+
+		/* Clear the response timeout flag */
+		n329_sd_write(host, SDISR_RITO_IF, REG_SDISR);
+
+		/* Set the timeout for the command */
+		n329_sd_write(host, 0x1fff, REG_SDTMOUT);
+	}
+
+	/* No data so disable blk transfer done interrupt */
+	n329_sd_write(host, n329_sd_read(host, REG_SDIER) &
+						~SDIER_BLKD_IEN, REG_SDIER);
+
+	/* TBD */
+}
+
+static void n329_mmc_adtc(struct n329_mmc_host *host)
+{
+	dev_dbg(mmc_dev(host->mmc), "%s: cmd=%d\n", __func__, (int) mmc_cmd_type(host->cmd));
+}
+
+static void n329_mmc_start_cmd(struct n329_mmc_host *host,
+				  struct mmc_command *cmd)
+{
+	host->cmd = cmd;
+
+	switch (mmc_cmd_type(cmd)) {
+	case MMC_CMD_BC:
+		n329_mmc_bc(host);
+		break;
+	case MMC_CMD_BCR:
+		n329_mmc_ac(host);
+		break;
+	case MMC_CMD_AC:
+		n329_mmc_ac(host);
+		break;
+	case MMC_CMD_ADTC:
+		n329_mmc_adtc(host);
+		break;
+	default:
+		dev_warn(mmc_dev(host->mmc),
+			 "%s: unknown MMC command\n", __func__);
+		break;
+	}
+}
+
+static int n329_mmc_get_cd(struct mmc_host *mmc)
+{
+	struct n329_mmc_host *host = mmc_priv(mmc);
+	int present;
+
+	/* Make sure SD functionality is enabled */
+	if (n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
+		n329_mmc_write(host, n329_mmc_read(host, REG_FMICR) |
+					FMI_SD_EN, REG_FMICR);
+
+	/* Return 0 for card absent, 1 for card present */
+	present = n329_mmc_read(host, REG_SDISR) & SDISR_CD_Card ? 0 : 1;
+
+	dev_dbg(mmc_dev(host->mmc), "%s: present=%d\n", __func__, (int) present);
+
+	return present;
+}
+
+static void n329_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
+{
+	struct n329_mmc_host *host = mmc_priv(mmc);
+
+	WARN_ON(host->mrq != NULL);
+	host->mrq = mrq;
+	n329_mmc_start_cmd(host, mrq->cmd);
+}
+
+static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+{
+	struct n329_mmc_host *host = mmc_priv(mmc);
+
+	dev_dbg(mmc_dev(host->mmc), "%s: clock=%d\n", __func__, (int) ios->clock);
+
+	if (ios->bus_width == MMC_BUS_WIDTH_8) {
+		dev_err(mmc_dev(host->mmc), "Unsupported bus width: %d\n", (int) ios->bus_width);
+	} else if (ios->bus_width == MMC_BUS_WIDTH_4) {
+		host->bus_width = 1;
+		n329_mmc_write(host, n329_mmc_read(host, REG_SDCR) |
+							SDCR_DBW, REG_SDCR);
+	} else {
+		host->bus_width = 0;
+		n329_mmc_write(host, n329_mmc_read(host, REG_SDCR) &
+							~SDCR_DBW, REG_SDCR);
+	}
+
+	if (ios->clock) {
+		/* Set the clock rate of the SD clock */
+		clk_set_rate(host->sd_clk, ios->clock);
+
+		/* Delay a bit */
+		udelay(1000);
+
+		/* Wait for 74 clocks to complete */
+		n329_mmc_write(host, n329_mmc_read(host, REG_SDCR) |
+							SDCR_74CLK_OE, REG_SDCR);
+		while (n329_mmc_read(host, REG_SDCR) & SDCR_74CLK_OE);
+	}
+}
+
+static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
+{
+	struct n329_mmc_host *host = mmc_priv(mmc);
+	unsigned long flags;
+	u32 ier;
+
+	dev_dbg(mmc_dev(host->mmc), "%s: enable=%d\n", __func__, enable);
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	host->sdio_irq_en = enable;
+
+	ier = n329_mmc_read(host, REG_SDIER);
+
+	if (enable)
+		ier |= SDIER_SDIO_IEN;
+	else
+		ier &= ~SDIER_SDIO_IEN;
+
+	n329_mmc_write(host, ier, REG_SDIER);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static const struct mmc_host_ops n329_mmc_ops = {
+	.request = n329_mmc_request,
+	.get_ro = mmc_gpio_get_ro,
+	.get_cd = n329_mmc_get_cd,
+	.set_ios = n329_mmc_set_ios,
+	.enable_sdio_irq = n329_mmc_enable_sdio_irq,
 };
 
 static struct platform_device_id n329_ssp_ids[] = {
@@ -1085,18 +1358,21 @@ static struct platform_device_id n329_ssp_ids[] = {
 MODULE_DEVICE_TABLE(platform, n329_ssp_ids);
 
 static const struct of_device_id n329_mmc_dt_ids[] = {
-	{ .compatible = "nuvoton,n32905-mmc", .data = (void *) N32905_SIC, },
-	{ /* sentinel */ }
+	{
+		.compatible = "nuvoton,n32905-mmc",
+		.data = (void *) N32905_SIC,
+	}, {
+		/* sentinel */
+	}
 };
 MODULE_DEVICE_TABLE(of, n329_mmc_dt_ids);
 
 static int n329_mmc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	struct n329_sd_host *host;
+	struct n329_mmc_host *host;
 	struct mmc_host *mmc;
 	struct resource *iores;
-	void __iomem *base;
 	int irq_err, ret = 0;
 
 	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -1104,46 +1380,22 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	if (!iores || irq_err < 0)
 		return -EINVAL;
 
-	mmc = mmc_alloc_host(sizeof(struct n329_sd_host), &pdev->dev);
+	mmc = mmc_alloc_host(sizeof(struct n329_mmc_host), &pdev->dev);
 	if (!mmc)
 		return -ENOMEM;
 
-	base = devm_ioremap_resource(&pdev->dev, iores);
-	if (IS_ERR(base)) {
-		ret = PTR_ERR(base);
-		goto out_mmc_free;
-	}
-
-	mmc->ops = 	&n329_sd_ops;
-	mmc->f_min = 300000;
-	mmc->f_max = 24000000;
-	mmc->ocr_avail = MCI_VDD_AVAIL;
-	mmc->caps = MMC_CAP_SD_HIGHSPEED | MMC_CAP_MMC_HIGHSPEED | 
-				MMC_CAP_4_BIT_DATA | MMC_CAP_SDIO_IRQ;
-
-	mmc->max_seg_size  = MCI_BUFSIZE;
-	mmc->max_segs      = MCI_BLKATONCE;
-	mmc->max_req_size  = MCI_BUFSIZE;
-	mmc->max_blk_size  = MCI_MAXBLKSIZE;
-	mmc->max_blk_count = MCI_BLKATONCE;
-
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
-	host->bus_mode = MMC_BUS_WIDTH_1;
-	host->port = 0;
-	host->base = base;
-	host->dev = &pdev->dev;
+	host->bus_width = 0;
+	host->sdio_irq_en = 0;
 
 	spin_lock_init(&host->lock);
 
-	host->buffer = dma_alloc_coherent(&pdev->dev, MCI_BUFSIZE,
-							&host->physical_address, GFP_KERNEL);
-	if (!host->buffer) {
-		ret = -ENOMEM;
+	host->base = devm_ioremap_resource(&pdev->dev, iores);
+	if (IS_ERR(host->base)) {
+		ret = PTR_ERR(host->base);
 		goto out_mmc_free;
 	}
-
-	sd_host = host;
 
 	if (of_find_property(np, "gpios", NULL)) {
 		int gpio = of_get_gpio(np, 0);
@@ -1152,12 +1404,12 @@ static int n329_mmc_probe(struct platform_device *pdev)
 			if (ret != -EPROBE_DEFER)
 				dev_err(&pdev->dev,
 					"Failed to get gpio flags, error: %d\n", ret);
-			goto out_dma_free;
+			goto out_mmc_free;
 		}
 		host->wp_gpio = gpio;
-		ret = n329_sd_setup_wp(host, &pdev->dev);
+		ret = n329_mmc_setup_wp(host, &pdev->dev);
 		if (ret < 0)
-			goto out_dma_free;
+			goto out_mmc_free;
 	} else {
 		host->wp_gpio = -1;
 	}
@@ -1166,27 +1418,39 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	host->sic_clk = of_clk_get(np, 1);
 	if (IS_ERR(host->sd_clk) || IS_ERR(host->sic_clk)) {
 		ret = -ENODEV;
-		goto out_dma_free;
+		goto out_mmc_free;
 	}
 	clk_prepare_enable(host->sd_clk);
 	clk_prepare_enable(host->sic_clk);
 
-	n329_sd_disable(host);
-	n329_sd_enable(host);
+	ret = n329_mmc_reset(host);
+	if (ret) {
+		goto out_clk_disable;
+	}
 
-	host->irq = platform_get_irq(pdev, 0);
-	ret = request_irq(host->irq, n329_sd_irq, IRQF_SHARED, mmc_hostname(mmc), host);
+	mmc->ops = &n329_mmc_ops;
+	mmc->caps = MMC_CAP_4_BIT_DATA | MMC_CAP_SDIO_IRQ | MMC_CAP_NEEDS_POLL;
+	mmc->f_min = 300000;
+	mmc->f_max = 24000000;
+
+	ret = mmc_of_parse(mmc);
 	if (ret)
 		goto out_clk_disable;
 
-	/* Add a thread to check CO, RI, and R2 */
-	kthread_run(n329_sd_event_thread, NULL, "sdioeventd");
+	mmc->ocr_avail = MCI_VDD_AVAIL;
 
-	setup_timer(&host->timer, n329_sd_timeout_timer, (unsigned long) host);
+	mmc->max_segs = MCI_BLKATONCE;
+	mmc->max_blk_size = MCI_MAXBLKSIZE;
+	mmc->max_blk_count = MCI_BLKATONCE;
+	mmc->max_req_size = MCI_BUFSIZE;
+	mmc->max_seg_size = MCI_BUFSIZE;
 
 	platform_set_drvdata(pdev, mmc);
 
-	n329_sd_card_detect(host);
+	host->irq = platform_get_irq(pdev, 0);
+	ret = request_irq(host->irq, n329_mmc_irq, IRQF_SHARED, mmc_hostname(mmc), host);
+	if (ret)
+		goto out_clk_disable;
 
 	ret = mmc_add_host(mmc);
 	if (ret)
@@ -1197,8 +1461,6 @@ static int n329_mmc_probe(struct platform_device *pdev)
 out_clk_disable:
 	clk_disable_unprepare(host->sic_clk);
 	clk_disable_unprepare(host->sd_clk);
-out_dma_free:
-	dma_free_coherent(&pdev->dev, MCI_BUFSIZE, host->buffer, host->physical_address);
 out_mmc_free:
 	mmc_free_host(mmc);
 	return ret;
@@ -1208,31 +1470,18 @@ out_mmc_free:
 static int n329_mmc_remove(struct platform_device *pdev)
 {
 	struct mmc_host *mmc = platform_get_drvdata(pdev);
-	struct n329_sd_host *host;
-
+	struct n329_mmc_host *host = mmc_priv(mmc);
 	if (!mmc)
 		return -1;
 
 	host = mmc_priv(mmc);
 
+	mmc_remove_host(mmc);
+
 	clk_disable_unprepare(host->sic_clk);
 	clk_disable_unprepare(host->sd_clk);
 
-	if (host->buffer)
-		dma_free_coherent(&pdev->dev, MCI_BUFSIZE, host->buffer, host->physical_address);
-
-#if 0
-	w55fa93_sd_disable(host);
-	del_timer_sync(&host->timer);
-	mmc_remove_host(mmc);
-	free_irq(host->irq, host);
-
-	clk_disable(host->sd_clk);
-	clk_put(host->sd_clk);
-#endif
-
 	mmc_free_host(mmc);
-	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }
