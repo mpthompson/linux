@@ -1077,8 +1077,8 @@ static irqreturn_t n329_mmc_irq(int irq, void *devid)
 
 	/* SDIO interrupt? */
 	if (status & SDISR_SDIO_IF) {
-
-		/* Do something here */
+		/* Notify the MMC core of the interrupt */
+		mmc_signal_sdio_irq(host->mmc);
 
 		/* Clear the interrupt */
 		n329_mmc_write(host, SDISR_SDIO_IF, REG_SDISR);
@@ -1174,21 +1174,23 @@ static int n329_mmc_setup_wp(struct n329_mmc_host *host, struct device *dev)
 
 static void n329_mmc_bc(struct n329_mmc_host *host)
 {
-	dev_dbg(mmc_dev(host->mmc), "%s: cmd=%d\n", __func__, (int) mmc_cmd_type(host->cmd));
-}
-
-static void n329_mmc_ac(struct n329_mmc_host *host)
-{
+	struct mmc_command *cmd = host->cmd;
+	struct mmc_request *mrq = host->mrq;
 	u32 csr;
 
-	dev_dbg(mmc_dev(host->mmc), "%s: cmd=%d\n", __func__, (int) mmc_cmd_type(host->cmd));
+	dev_dbg(mmc_dev(host->mmc), "%s: cmd=%d\n", __func__, 
+					(int) mmc_cmd_type(cmd));
 
 	/* Make sure SD functionality is enabled */
 	if (~n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
 		n329_mmc_write(host, FMI_SD_EN, REG_FMICR);
 
+	/* Reset SD internal state clearing RI, R2, DI and DO registers */
+	n329_mmc_write(host, SDCR_SWRST, REG_SDCR);
+	while (n329_mmc_read(host, REG_SDCR) & SDCR_SWRST);
+
 	/* Read the SDCR register */
-	csr = n329_sd_read(host, REG_SDCR);
+	csr = n329_mmc_read(host, REG_SDCR);
 
 	/* Clear port, BLK_CNT, CMD_CODE, and all xx_EN fields */
 	csr &= 0x9f00c080;
@@ -1202,7 +1204,65 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 	/* Set the bus width bit */
 	csr |= host->bus_width == 1 ? SDCR_DBW : 0;
 
-	/* If a response is expected then allow maximum response latancy */
+	/* No data so disable blk transfer done interrupt */
+	n329_mmc_write(host, n329_mmc_read(host, REG_SDIER) &
+						~SDIER_BLKD_IEN, REG_SDIER);
+
+    /* Set the command argument */
+    n329_mmc_write(host, cmd->arg, REG_SDARG);
+
+    /* Initiate the command */
+    n329_mmc_write(host, csr, REG_SDCR);
+
+	/* Wait for command to complete */
+	while (n329_mmc_read(host, REG_SDCR) & SDCR_CO_EN) {
+		/* XXX Look for card removal */
+	}
+
+	/* No error to pass back */
+	cmd->error = 0;
+
+	/* Reset the request data */
+	host->mrq = NULL;
+
+	/* The request is done */
+	mmc_request_done(host->mmc, mrq);
+}
+
+static void n329_mmc_ac(struct n329_mmc_host *host)
+{
+	struct mmc_command *cmd = host->cmd;
+	struct mmc_request *mrq = host->mrq;
+	unsigned int error = 0;
+	u32 csr;
+
+	dev_dbg(mmc_dev(host->mmc), "%s: cmd=%d\n", __func__, 
+					(int) mmc_cmd_type(cmd));
+
+	/* Make sure SD functionality is enabled */
+	if (~n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
+		n329_mmc_write(host, FMI_SD_EN, REG_FMICR);
+
+	/* Reset SD internal state clearing RI, R2, DI and DO registers */
+	n329_mmc_write(host, SDCR_SWRST, REG_SDCR);
+	while (n329_mmc_read(host, REG_SDCR) & SDCR_SWRST);
+
+	/* Read the SDCR register */
+	csr = n329_mmc_read(host, REG_SDCR);
+
+	/* Clear port, BLK_CNT, CMD_CODE, and all xx_EN fields */
+	csr &= 0x9f00c080;
+
+	/* Set the port selection bits */
+	csr |= SDCR_SDPORT_0;
+
+	/* Set command code and enable command out */
+	csr |= (cmd->opcode << 8) | SDCR_CO_EN;
+
+	/* Set the bus width bit */
+	csr |= host->bus_width == 1 ? SDCR_DBW : 0;
+
+	/* Do we need to capture a response? */
 	if (mmc_resp_type(host->cmd) != MMC_RSP_NONE) {
 
 		/* Set 136 bit response for R2, 48 bit response otherwise */
@@ -1213,17 +1273,89 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 		}
 
 		/* Clear the response timeout flag */
-		n329_sd_write(host, SDISR_RITO_IF, REG_SDISR);
+		n329_mmc_write(host, SDISR_RITO_IF, REG_SDISR);
 
 		/* Set the timeout for the command */
-		n329_sd_write(host, 0x1fff, REG_SDTMOUT);
+		// XXX n329_mmc_write(host, 0x1fff, REG_SDTMOUT);
+		n329_mmc_write(host, 0xffff, REG_SDTMOUT);
 	}
 
 	/* No data so disable blk transfer done interrupt */
-	n329_sd_write(host, n329_sd_read(host, REG_SDIER) &
+	n329_mmc_write(host, n329_mmc_read(host, REG_SDIER) &
 						~SDIER_BLKD_IEN, REG_SDIER);
 
-	/* TBD */
+    /* Set the command argument */
+    n329_mmc_write(host, cmd->arg, REG_SDARG);
+
+    /* Initiate the command */
+    n329_mmc_write(host, csr, REG_SDCR);
+
+	/* Do we need to collect a response? */
+	if (mmc_resp_type(host->cmd) != MMC_RSP_NONE) {
+		/* Wait for response to complete */
+		while (n329_mmc_read(host, REG_SDCR) & (SDCR_R2_EN | SDCR_RI_EN)) {
+			/* Look for timeouts */
+			if (n329_mmc_read(host, REG_SDISR) & SDISR_RITO_IF) {
+				error = -ETIMEDOUT;
+				break;
+			}
+			/* XXX Look for card removal */
+		}
+
+		/* Clear the timeout register and flag */
+		n329_mmc_write(host, 0x0, REG_SDTMOUT);
+		n329_mmc_write(host, SDISR_RITO_IF, REG_SDISR);
+
+		/* Read the response if no error so far */
+		if (!error) {
+			if (mmc_resp_type(cmd) == MMC_RSP_R2) {
+				/* Read from DMA buffer */
+				unsigned int tmp[5];
+				tmp[0] = n329_mmc_read(host, REG_FB_0);
+				tmp[1] = n329_mmc_read(host, REG_FB_0 + 4);
+				tmp[2] = n329_mmc_read(host, REG_FB_0 + 8);
+				tmp[3] = n329_mmc_read(host, REG_FB_0 + 12);
+				tmp[4] = n329_mmc_read(host, REG_FB_0 + 16);
+				cmd->resp[0] = ((tmp[0] & 0x00ffffff) << 8) |
+							   ((tmp[1] & 0xff000000) >> 24);
+				cmd->resp[1] = ((tmp[1] & 0x00ffffff) << 8) |
+							   ((tmp[2] & 0xff000000) >> 24);
+				cmd->resp[2] = ((tmp[2] & 0x00ffffff) << 8) |
+							   ((tmp[3] & 0xff000000) >> 24);
+				cmd->resp[3] = ((tmp[3] & 0x00ffffff) << 8) |
+							   ((tmp[4] & 0xff000000) >> 24);
+			} else {
+				cmd->resp[0] = (n329_mmc_read(host, REG_SDRSP0) << 8) |
+							   (n329_mmc_read(host, REG_SDRSP1) & 0xff);
+				cmd->resp[1] = cmd->resp[2] = cmd->resp[3] = 0;
+			}
+		}
+		
+		/* Check for CRC errors */
+		if (!error && (mmc_resp_type(cmd) & MMC_RSP_CRC)) {
+			if (n329_mmc_read(host, REG_SDISR) & SDISR_CRC_7) {
+				cmd->error = -EIO;
+			}
+		}
+
+		/* Clear the timeout register and error flags */
+		n329_mmc_write(host, 0x0, REG_SDTMOUT);
+		n329_mmc_write(host, SDISR_RITO_IF | SDISR_CRC_7, REG_SDISR);
+	} else {
+		/* Wait for command to complete */
+		while (n329_mmc_read(host, REG_SDCR) & SDCR_CO_EN) {
+			/* XXX Look for card removal */
+		}
+	}
+
+	/* Pass back any error */
+	cmd->error = error;
+
+	/* Reset the request data */
+	host->mrq = NULL;
+
+	/* The request is done */
+	mmc_request_done(host->mmc, mrq);
 }
 
 static void n329_mmc_adtc(struct n329_mmc_host *host)
@@ -1238,15 +1370,19 @@ static void n329_mmc_start_cmd(struct n329_mmc_host *host,
 
 	switch (mmc_cmd_type(cmd)) {
 	case MMC_CMD_BC:
+		/* Broadcast command (bc), no response */
 		n329_mmc_bc(host);
 		break;
 	case MMC_CMD_BCR:
+		/* Broadcast command (bcr), with response */
 		n329_mmc_ac(host);
 		break;
 	case MMC_CMD_AC:
+		/* Addressed point-to-point command (ac), no data or DAT lines */
 		n329_mmc_ac(host);
 		break;
 	case MMC_CMD_ADTC:
+		/* Addressed point-to-point command (adtc), data transfer on DAT lines */
 		n329_mmc_adtc(host);
 		break;
 	default:
@@ -1386,6 +1522,10 @@ static int n329_mmc_probe(struct platform_device *pdev)
 
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
+	host->mrq = NULL;
+	host->cmd = NULL;
+	host->data = NULL;
+
 	host->bus_width = 0;
 	host->sdio_irq_en = 0;
 
