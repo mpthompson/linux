@@ -133,10 +133,7 @@
 #define MCI_BLKATONCE       255
 #define MCI_BUFSIZE         (MCI_BLKSIZE * MCI_BLKATONCE)
 
-#define MCI_VDD_AVAIL		(MMC_VDD_27_28 | MMC_VDD_28_29 | \
-							 MMC_VDD_29_30 | MMC_VDD_30_31 | \
-							 MMC_VDD_31_32 | MMC_VDD_32_33 | \
-							 MMC_VDD_33_34)
+#define MCI_VDD_AVAIL		(MMC_VDD_32_33 | MMC_VDD_33_34)
 
 enum n329_sic_type {
 	N32905_SIC
@@ -222,11 +219,13 @@ static int n329_mmc_reset(struct n329_mmc_host *host)
 	n329_mmc_write(host, FMI_SWRST, REG_FMICR);
 	while (n329_mmc_read(host, REG_FMICR) & FMI_SWRST);
 
-	/* Enable DMAC */
-	n329_mmc_write(host, DMAC_EN, REG_DMACCSR);
+	/* Enable DMAC engine */
+	n329_mmc_write(host, n329_mmc_read(host, REG_DMACCSR) | 
+					DMAC_EN, REG_DMACCSR);
 
 	/* Enable SD */
-	n329_mmc_write(host, FMI_SD_EN, REG_FMICR);
+	n329_mmc_write(host, n329_mmc_read(host, REG_FMICR) | 
+					FMI_SD_EN, REG_FMICR);
 
 	/* Reset SD internal state */
 	n329_mmc_write(host, SDCR_SWRST, REG_SDCR);
@@ -307,6 +306,11 @@ static void n329_mmc_dma_to_sg(struct n329_mmc_host *host,
 	len = data->sg_len;
 	size = data->blksz * data->blocks;
 
+	if (size > 32) {
+		dev_info(mmc_dev(host->mmc), "%08x %08x %08x %08x\n", 
+			dmabuf[0], dmabuf[1], dmabuf[2], dmabuf[3]);
+	}
+
 	/* Loop over each scatter gather entry */
 	for (i = 0; i < len; i++) {
 		struct scatterlist *sg;
@@ -325,7 +329,7 @@ static void n329_mmc_dma_to_sg(struct n329_mmc_host *host,
 		memcpy(sgbuffer + sg->offset, tmpv, amount);
 		tmpv += amount;
 		dmabuf = (unsigned *) tmpv;
-        flush_kernel_dcache_page(sg_page(sg));
+		flush_kernel_dcache_page(sg_page(sg));
 		kunmap_atomic(sgbuffer);
 
 		/* Adjust our counts */
@@ -369,13 +373,16 @@ static int n329_mmc_setup_wp(struct n329_mmc_host *host, struct device *dev)
 static void n329_mmc_bc(struct n329_mmc_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
-	struct mmc_request *mrq = host->mrq;
 	unsigned int error = 0;
 	u32 csr;
 
+	/* Make sure DMAC engine is enabled */
+	n329_mmc_write(host, n329_mmc_read(host, REG_DMACCSR) | 
+					DMAC_EN, REG_DMACCSR);
+
 	/* Make sure SD functionality is enabled */
-	if (~n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
-		n329_mmc_write(host, FMI_SD_EN, REG_FMICR);
+	n329_mmc_write(host, n329_mmc_read(host, REG_FMICR) | 
+					FMI_SD_EN, REG_FMICR);
 
 	/* Read the SDCR register */
 	csr = n329_mmc_read(host, REG_SDCR);
@@ -406,7 +413,7 @@ static void n329_mmc_bc(struct n329_mmc_host *host)
 	while (n329_mmc_read(host, REG_SDCR) & SDCR_CO_EN) {
 		/* Look for card removal */
 		if (n329_mmc_read(host, REG_SDISR) & SDISR_CD_Card) {
-			error = -EIO;
+			error = -ENODEV;
 			break;
 		}
 	}
@@ -421,23 +428,26 @@ static void n329_mmc_bc(struct n329_mmc_host *host)
 	/* Pass back any error */
 	cmd->error = error;
 
+	/* The request is done */
+	mmc_request_done(host->mmc, host->mrq);
+
 	/* Reset any request data */
 	host->mrq = NULL;
-
-	/* The request is done */
-	mmc_request_done(host->mmc, mrq);
 }
 
 static void n329_mmc_ac(struct n329_mmc_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
-	struct mmc_request *mrq = host->mrq;
 	unsigned int error = 0;
 	u32 csr;
 
+	/* Make sure DMAC engine is enabled */
+	n329_mmc_write(host, n329_mmc_read(host, REG_DMACCSR) | 
+					DMAC_EN, REG_DMACCSR);
+
 	/* Make sure SD functionality is enabled */
-	if (~n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
-		n329_mmc_write(host, FMI_SD_EN, REG_FMICR);
+	n329_mmc_write(host, n329_mmc_read(host, REG_FMICR) | 
+					FMI_SD_EN, REG_FMICR);
 
 	/* Read the SDCR register */
 	csr = n329_mmc_read(host, REG_SDCR);
@@ -493,7 +503,7 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 			}
 			/* Look for card removal */
 			if (sdisr & SDISR_CD_Card) {
-				error = -EIO;
+				error = -ENODEV;
 				break;
 			}
 		}
@@ -512,13 +522,13 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 		/* Read the response if no error so far */
 		if (!error) {
 			if (mmc_resp_type(cmd) == MMC_RSP_R2) {
-				/* Read from DMA buffer */
+				/* Read big-endian R2 response from DMA buffer */
 				unsigned int tmp[5];
-				tmp[0] = n329_mmc_read(host, REG_FB_0);
-				tmp[1] = n329_mmc_read(host, REG_FB_0 + 4);
-				tmp[2] = n329_mmc_read(host, REG_FB_0 + 8);
-				tmp[3] = n329_mmc_read(host, REG_FB_0 + 12);
-				tmp[4] = n329_mmc_read(host, REG_FB_0 + 16);
+				tmp[0] = be32_to_cpu(n329_mmc_read(host, REG_FB_0));
+				tmp[1] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 4));
+				tmp[2] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 8));
+				tmp[3] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 12));
+				tmp[4] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 16));
 				cmd->resp[0] = ((tmp[0] & 0x00ffffff) << 8) |
 							   ((tmp[1] & 0xff000000) >> 24);
 				cmd->resp[1] = ((tmp[1] & 0x00ffffff) << 8) |
@@ -538,7 +548,7 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 		while (n329_mmc_read(host, REG_SDCR) & SDCR_CO_EN) {
 			/* Look for card removal */
 			if (n329_mmc_read(host, REG_SDISR) & SDISR_CD_Card) {
-				error = -EIO;
+				error = -ENODEV;
 				break;
 			}
 		}
@@ -554,17 +564,16 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 	/* Pass back any error */
 	cmd->error = error;
 
-	/* Reset the request data */
-	host->mrq = NULL;
-
 	/* The request is done */
-	mmc_request_done(host->mmc, mrq);
+	mmc_request_done(host->mmc, host->mrq);
+
+	/* Reset any request data */
+	host->mrq = NULL;
 }
 
 static void n329_mmc_adtc(struct n329_mmc_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
-	struct mmc_request *mrq = host->mrq;
 	struct mmc_data *data = cmd->data;
 	unsigned int error = 0;
 	u32 block_count, block_length;
@@ -595,9 +604,17 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 	/* Initialize the data transferred */
 	data->bytes_xfered = 0;
 
+	/* Make sure DMAC engine is enabled */
+	n329_mmc_write(host, n329_mmc_read(host, REG_DMACCSR) | 
+					DMAC_EN, REG_DMACCSR);
+
 	/* Make sure SD functionality is enabled */
-	if (~n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
-		n329_mmc_write(host, FMI_SD_EN, REG_FMICR);
+	n329_mmc_write(host, n329_mmc_read(host, REG_FMICR) | 
+					FMI_SD_EN, REG_FMICR);
+
+	/* Disable DMAC and FMI interrupts */
+	n329_mmc_write(host, 0, REG_DMACIER);
+	n329_mmc_write(host, 0, REG_FMIIER);
 
 	/* Read the SDCR register */
 	csr = n329_mmc_read(host, REG_SDCR);
@@ -673,7 +690,7 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 			}
 			/* Look for card removal */
 			if (sdisr & SDISR_CD_Card) {
-				error = -EIO;
+				error = -ENODEV;
 				break;
 			}
 		}
@@ -692,13 +709,13 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 		/* Read the response if no error so far */
 		if (!error) {
 			if (mmc_resp_type(cmd) == MMC_RSP_R2) {
-				/* Read from DMA buffer */
+				/* Read big-endian R2 response from DMA buffer */
 				unsigned int tmp[5];
-				tmp[0] = n329_mmc_read(host, REG_FB_0);
-				tmp[1] = n329_mmc_read(host, REG_FB_0 + 4);
-				tmp[2] = n329_mmc_read(host, REG_FB_0 + 8);
-				tmp[3] = n329_mmc_read(host, REG_FB_0 + 12);
-				tmp[4] = n329_mmc_read(host, REG_FB_0 + 16);
+				tmp[0] = be32_to_cpu(n329_mmc_read(host, REG_FB_0));
+				tmp[1] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 4));
+				tmp[2] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 8));
+				tmp[3] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 12));
+				tmp[4] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 16));
 				cmd->resp[0] = ((tmp[0] & 0x00ffffff) << 8) |
 							   ((tmp[1] & 0xff000000) >> 24);
 				cmd->resp[1] = ((tmp[1] & 0x00ffffff) << 8) |
@@ -718,7 +735,7 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 		while (n329_mmc_read(host, REG_SDCR) & SDCR_CO_EN) {
 			/* Look for card removal */
 			if (n329_mmc_read(host, REG_SDISR) & SDISR_CD_Card) {
-				error = -EIO;
+				error = -ENODEV;
 				break;
 			}
 		}
@@ -758,20 +775,11 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 			/* Look for card removal */
 			if (sdisr & SDISR_CD_Card) {
 				dev_info(mmc_dev(host->mmc), "%s: card removal error\n", __func__);
-				error = -EIO;
+				error = -ENODEV;
 				break;
 			}
-			/* Look for transfer complete */
-			if (sdisr & SDISR_BLKD_IF)
-				break;
 
-#if 0
-			/* Generate 8 clocks and wait for completion */
-			n329_mmc_write(host, n329_mmc_read(host, REG_SDCR) |
-							SDCR_8CLK_OE, REG_SDCR);
-			while (n329_mmc_read(host, REG_SDCR) & SDCR_8CLK_OE)
-#endif
-				schedule();
+			schedule();
 		}
 
 		/* Clear the timeout register and error flags */
@@ -781,13 +789,18 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 		/* Set the request error */
 		data->error = error;
 
-		if (!error) {
-			/* Update data transferred */
-			data->bytes_xfered = data->blksz * data->blocks;
+		dev_info(mmc_dev(host->mmc), "DMACISR: %08x\n", 
+			n329_mmc_read(host, REG_DMACISR));
+		dev_info(mmc_dev(host->mmc), "FMIISR: %08x\n", 
+			n329_mmc_read(host, REG_FMIISR));
 
+		if (!error) {
 			/* Put the scatter data */
 			if (data->flags & MMC_DATA_READ)
 				n329_mmc_dma_to_sg(host, data);
+		} else {
+			/* Mark all data blocks as error */ 
+			data->bytes_xfered = 0;
 		}
 	}
 
@@ -795,17 +808,13 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 	host->data = NULL;
 
 	/* Do a stop command? */
-	if (mrq->stop) {
-		n329_mmc_start_cmd(host, mrq->stop);
-	}
+	if (host->mrq->stop) 
+		n329_mmc_start_cmd(host, host->mrq->stop);
 	else
-	{
-		/* Reset the request data */
-		host->mrq = NULL;
+		mmc_request_done(host->mmc, host->mrq);
 
-		/* The request is done */
-		mmc_request_done(host->mmc, mrq);
-	}		
+	/* Reset the request data */
+	host->mrq = NULL;
 }
 
 static void n329_mmc_start_cmd(struct n329_mmc_host *host,
@@ -835,6 +844,20 @@ static void n329_mmc_start_cmd(struct n329_mmc_host *host,
 			 "%s: unknown MMC command\n", __func__);
 		break;
 	}
+}
+
+static int n329_mmc_get_ro(struct mmc_host *mmc)
+{
+	struct n329_mmc_host *host = mmc_priv(mmc);
+	int wp_value = 0;
+
+	/* Is a write protect GPIO implemented? */
+	if (host->wp_gpio > -1) {
+		wp_value = gpio_get_value_cansleep(host->wp_gpio);
+	}
+
+	/* Returns 0 for read/write, 1 for read-only card */
+	return wp_value ? 1 : 0;
 }
 
 static int n329_mmc_get_cd(struct mmc_host *mmc)
@@ -922,7 +945,7 @@ static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 
 static const struct mmc_host_ops n329_mmc_ops = {
 	.request = n329_mmc_request,
-	.get_ro = mmc_gpio_get_ro,
+	.get_ro = n329_mmc_get_ro,
 	.get_cd = n329_mmc_get_cd,
 	.set_ios = n329_mmc_set_ios,
 	.enable_sdio_irq = n329_mmc_enable_sdio_irq,
