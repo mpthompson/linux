@@ -36,7 +36,7 @@
 
 #define DRIVER_NAME	"n329-mmc"
 
-#define BITS(start,end)		((0xFFFFFFFF >> (31 - start)) & (0xFFFFFFFF << end))
+#define BITS(start,end)		((0xffffffff >> (31 - start)) & (0xffffffff << end))
 
 /* Serial Interface Controller (SIC) Registers */
 #define SIC_BASE		0x0000
@@ -108,7 +108,7 @@
 	#define SDIER_CRC_IEN		BIT(1)		/* CRC-7, CRC-16 and CRC status error interrupt enable */
 	#define SDIER_BLKD_IEN		BIT(0)		/* Block transfer done interrupt interrupt enable */
 
-#define REG_SDISR		(FMI_BA + 0x02C)   	/* SD interrupt status register */
+#define REG_SDISR		(FMI_BA + 0x02c)   	/* SD interrupt status register */
 	#define	SDISR_R1B_IF		BIT(24)		/* R1b interrupt flag */
 	#define SDISR_SD_DATA1		BIT(18)		/* SD DAT1 pin status */
 	#define SDISR_CD_Card		BIT(16)		/* CD detection pin status */
@@ -126,7 +126,7 @@
 #define REG_SDRSP0		(FMI_BA + 0x030)   	/* SD receive response token register 0 */
 #define REG_SDRSP1		(FMI_BA + 0x034)   	/* SD receive response token register 1 */
 #define REG_SDBLEN		(FMI_BA + 0x038)   	/* SD block length register */
-#define REG_SDTMOUT 	(FMI_BA + 0x03C)   	/* SD block length register */
+#define REG_SDTMOUT 	(FMI_BA + 0x03c)   	/* SD block length register */
 
 #define MCI_BLKSIZE         512
 #define MCI_MAXBLKSIZE      4096
@@ -149,7 +149,7 @@ struct n329_mmc_host {
 	unsigned *buffer;
 	unsigned total_length;
 	unsigned xfer_error;
-	wait_queue_head_t dma_queue;
+	wait_queue_head_t dma_wait;
 
 	int irq;
 	int wp_gpio;
@@ -241,7 +241,7 @@ static irqreturn_t n329_mmc_irq(int irq, void *devid)
 
 	/* Wakeup the transfer? */
 	if (wakeup)
-		wake_up_interruptible(&host->dma_queue);
+		wake_up_interruptible(&host->dma_wait);
 
 	return IRQ_HANDLED;
 }
@@ -342,14 +342,6 @@ static void n329_mmc_dma_to_sg(struct n329_mmc_host *host,
 
 	len = data->sg_len;
 	size = data->blksz * data->blocks;
-
-#if 0
-	for (i = 0; i < size / 4; i += 4)
-	{
-		dev_info(mmc_dev(host->mmc), "%04x: %08x %08x %08x %08x\n", 
-				i * 4, dmabuf[i], dmabuf[i + 1], dmabuf[i + 2], dmabuf[i + 3]);
-	}
-#endif
 
 	/* Loop over each scatter gather entry */
 	for (i = 0; i < len; i++) {
@@ -512,7 +504,7 @@ static unsigned n329_mmc_do_command(struct n329_mmc_host *host)
 				break;
 			}
 
- 			/* Voluntarily relinquish the CPU while waiting */
+			/* Voluntarily relinquish the CPU while waiting */
 			schedule();
 		}
 
@@ -538,7 +530,7 @@ static unsigned n329_mmc_do_command(struct n329_mmc_host *host)
 				break;
 			}
 
- 			/* Voluntarily relinquish the CPU while waiting */
+			/* Voluntarily relinquish the CPU while waiting */
 			schedule();
 		}
 	}
@@ -641,14 +633,11 @@ static unsigned n329_mmc_do_transfer(struct n329_mmc_host *host)
 	/* Clear any transfer error */
 	host->xfer_error = 0;
 
-	/* Initialize the wait queue */
-	init_waitqueue_head(&host->dma_queue);
-
 	/* Initiate the transfer */
 	n329_mmc_write(host, csr, REG_SDCR);
 
 	/* Wait for data transfer complete */
-	wait_event_interruptible(host->dma_queue,
+	wait_event_interruptible(host->dma_wait,
 					((n329_mmc_read(host, REG_SDCR) & 
 						(SDCR_DO_EN | SDCR_DI_EN)) == 0));
 
@@ -940,6 +929,7 @@ static int n329_mmc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Can't allocate transmit buffer\n");
 		goto out_mmc_free;
 	}
+	init_waitqueue_head(&host->dma_wait);
 
 	if (of_find_property(np, "gpios", NULL)) {
 		int gpio = of_get_gpio(np, 0);
