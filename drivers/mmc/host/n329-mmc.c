@@ -100,7 +100,7 @@
 #define REG_SDIER		(FMI_BA + 0x028)   	/* SD interrupt enable register */
 	#define	SDIER_CDSRC			BIT(30)		/* SD card detection source selection: SD-DAT3 or GPIO */
 	#define	SDIER_R1B_IEN		BIT(24)		/* R1b interrupt enable */
-	#define	SDIER_WKUP_EN		BIT(14)		/* SDIO wake-up signal geenrating enable */
+	#define	SDIER_WKUP_EN		BIT(14)		/* SDIO wake-up signal generating enable */
 	#define	SDIER_DITO_IEN		BIT(13)		/* SD data input timeout interrupt enable */
 	#define	SDIER_RITO_IEN		BIT(12)		/* SD response input timeout interrupt enable */
 	#define SDIER_SDIO_IEN		BIT(10)		/* SDIO interrupt status enable (SDIO issue interrupt via DAT[1] */
@@ -146,8 +146,10 @@ struct n329_mmc_host {
 	struct mmc_data	*data;
 
 	dma_addr_t physical_address;
-	unsigned int *buffer;
-	unsigned int total_length;
+	unsigned *buffer;
+	unsigned total_length;
+	unsigned xfer_error;
+	wait_queue_head_t dma_queue;
 
 	int irq;
 	int wp_gpio;
@@ -175,12 +177,13 @@ static inline u32 n329_mmc_read(struct n329_mmc_host *host, u32 addr)
 static irqreturn_t n329_mmc_irq(int irq, void *devid)
 {
 	struct n329_mmc_host *host = devid;
-	unsigned status;
+	unsigned wakeup = 0;
+	unsigned sdisr;
 
-	status = n329_mmc_read(host, REG_SDISR);
+	sdisr = n329_mmc_read(host, REG_SDISR);
 
 	/* SDIO interrupt? */
-	if (status & SDISR_SDIO_IF) {
+	if (sdisr & SDISR_SDIO_IF) {
 		/* Notify the MMC core of the interrupt */
 		mmc_signal_sdio_irq(host->mmc);
 
@@ -189,22 +192,56 @@ static irqreturn_t n329_mmc_irq(int irq, void *devid)
 	}
 
 	/* Block transfer done? */
-	if (status & SDISR_BLKD_IF) {
-
-		/* Do something here */
-
+	if (sdisr & SDISR_BLKD_IF) {
 		/* Clear the interrupt */
 		n329_mmc_write(host, SDISR_BLKD_IF, REG_SDISR);
+
+		/* Wakeup if we are transferring data */
+		wakeup = host->data != NULL ? 1 : 0;
+	}
+
+	/* Data transfer timeout? */
+	if (sdisr & SDISR_DITO_IF) {
+		/* Clear the interrupt */
+		n329_mmc_write(host, SDISR_DITO_IF, REG_SDISR);
+
+		/* Set a transfer error */
+		host->xfer_error = -ETIMEDOUT;
+
+		/* Wakeup if we are transferring data */
+		wakeup = host->data != NULL ? 1 : 0;
+	}
+
+	/* CRC error during transfer? */
+	if (sdisr & SDISR_CRC_IF) {
+		/* Clear the interrupt */
+		n329_mmc_write(host, SDISR_CRC_IF, REG_SDISR);
+
+		/* Set a transfer error */
+		host->xfer_error = -EIO;
+
+		/* Wakeup if we are transferring data */
+		wakeup = host->data != NULL ? 1 : 0;
 	}
 
 	/* Card insert/remove detected? */
-	if (status & SDISR_CD_IF) {
-
-		/* Do something here */
-
+	if (sdisr & SDISR_CD_IF) {
 		/* Clear the interrupt */
 		n329_mmc_write(host, SDISR_CD_IF, REG_SDISR);
+
+		/* Was the card removed */
+		if (sdisr & SDISR_CD_Card) {
+			/* Set a transfer error */
+			host->xfer_error = -ENODEV;
+
+			/* Wakeup if we are transferring data */
+			wakeup = host->data != NULL ? 1 : 0;
+		}
 	}
+
+	/* Wakeup the transfer? */
+	if (wakeup)
+		wake_up_interruptible(&host->dma_queue);
 
 	return IRQ_HANDLED;
 }
@@ -236,7 +273,7 @@ static int n329_mmc_reset(struct n329_mmc_host *host)
 					SDIER_CDSRC, REG_SDIER);
 
 	/* Write 1 bits to clear all SDISR */
-	n329_mmc_write(host, 0xFFFFFFFF, REG_SDISR);
+	n329_mmc_write(host, 0xffffffff, REG_SDISR);
 
 	/* Select SD port 0 */
 	n329_mmc_write(host, (n329_mmc_read(host, REG_SDCR) &
@@ -475,6 +512,7 @@ static unsigned n329_mmc_do_command(struct n329_mmc_host *host)
 				break;
 			}
 
+ 			/* Voluntarily relinquish the CPU while waiting */
 			schedule();
 		}
 
@@ -500,6 +538,7 @@ static unsigned n329_mmc_do_command(struct n329_mmc_host *host)
 				break;
 			}
 
+ 			/* Voluntarily relinquish the CPU while waiting */
 			schedule();
 		}
 	}
@@ -588,41 +627,38 @@ static unsigned n329_mmc_do_transfer(struct n329_mmc_host *host)
 	/* Set the block count */
 	csr |= block_count << 16;
 
+	/* Update the timeout to be suitable data transfer */
+	n329_mmc_write(host, 0xfffff, REG_SDTMOUT);
+
 	/* Write 1 bits to clear all SDISR */
 	n329_mmc_write(host, 0xffffffff, REG_SDISR);
 
-	/* Update the timeout to be suitable data transfer */
-	n329_mmc_write(host, 0xfffff, REG_SDTMOUT);
+	/* Enable the interrupt conditions that end a transfer */
+	n329_mmc_write(host, n329_mmc_read(host, REG_SDIER) |
+					SDIER_DITO_IEN | SDIER_CD_IEN | 
+					SDIER_CRC_IEN | SDIER_BLKD_IEN, REG_SDIER);
+
+	/* Clear any transfer error */
+	host->xfer_error = 0;
+
+	/* Initialize the wait queue */
+	init_waitqueue_head(&host->dma_queue);
 
 	/* Initiate the transfer */
 	n329_mmc_write(host, csr, REG_SDCR);
 
 	/* Wait for data transfer complete */
-	while (n329_mmc_read(host, REG_SDCR) & (SDCR_DO_EN | SDCR_DI_EN)) {
-		/* Read the status register */
-		u32 sdisr = n329_mmc_read(host, REG_SDISR);
+	wait_event_interruptible(host->dma_queue,
+					((n329_mmc_read(host, REG_SDCR) & 
+						(SDCR_DO_EN | SDCR_DI_EN)) == 0));
 
-		/* Look for CRC error */
-		if (sdisr & SDISR_CRC_IF) {
-			dev_info(mmc_dev(host->mmc), "%s: CRC error\n", __func__);
-			error = -EIO;
-			break;
-		}
-		/* Look for timeouts */
-		if (sdisr & SDISR_DITO_IF) {
-			dev_info(mmc_dev(host->mmc), "%s: timeout error\n", __func__);
-			error = -ETIMEDOUT;
-			break;
-		}
-		/* Look for card removal */
-		if (sdisr & SDISR_CD_Card) {
-			dev_info(mmc_dev(host->mmc), "%s: card removal error\n", __func__);
-			error = -ENODEV;
-			break;
-		}
+	/* Collect any error that occurred */
+	error = host->xfer_error;
 
-		schedule();
-	}
+	/* Disable the interrupt conditions that end a transfer */
+	n329_mmc_write(host, n329_mmc_read(host, REG_SDIER) &
+					~(SDIER_DITO_IEN | SDIER_CD_IEN | 
+					  SDIER_CRC_IEN | SDIER_BLKD_IEN), REG_SDIER);
 
 	/* Clear the timeout register and error flags */
 	n329_mmc_write(host, 0x0, REG_SDTMOUT);
