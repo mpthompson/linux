@@ -306,11 +306,13 @@ static void n329_mmc_dma_to_sg(struct n329_mmc_host *host,
 	len = data->sg_len;
 	size = data->blksz * data->blocks;
 
+#if 0
 	for (i = 0; i < size / 4; i += 4)
 	{
 		dev_info(mmc_dev(host->mmc), "%04x: %08x %08x %08x %08x\n", 
 				i * 4, dmabuf[i], dmabuf[i + 1], dmabuf[i + 2], dmabuf[i + 3]);
 	}
+#endif
 
 	/* Loop over each scatter gather entry */
 	for (i = 0; i < len; i++) {
@@ -392,10 +394,143 @@ static void n329_mmc_get_response(struct n329_mmc_host *host)
 		cmd->resp[3] = ((tmp[3] & 0x00ffffff) << 8) |
 					   ((tmp[4] & 0xff000000) >> 24);
 	} else if (mmc_resp_type(cmd) & MMC_RSP_PRESENT) {
- 		cmd->resp[0] = (n329_mmc_read(host, REG_SDRSP0) << 8) |
+		cmd->resp[0] = (n329_mmc_read(host, REG_SDRSP0) << 8) |
 					   (n329_mmc_read(host, REG_SDRSP1) & 0xff);
 		cmd->resp[1] = cmd->resp[2] = cmd->resp[3] = 0;
 	}
+}
+
+static unsigned n329_mmc_do_transfer(struct n329_mmc_host *host)
+{
+	struct mmc_command *cmd = host->cmd;
+	struct mmc_data *data = cmd->data;
+	unsigned error = 0;
+	u32 block_count, block_length;
+	u32 csr;
+
+	/* Sanity check that we have data */
+	if (!data) {
+		dev_err(mmc_dev(host->mmc), "Invalid data\n");
+		return -EINVAL;
+	}
+
+	/* Sanity check block size and block count */
+	block_count = data->blocks;
+	block_length = data->blksz;
+	if (block_length > 512) {
+		dev_err(mmc_dev(host->mmc), "Block length too large: %d\n",
+						(int) data->blksz);
+		return -EINVAL;
+	}
+	if (block_count >= 256) {
+		dev_err(mmc_dev(host->mmc), "Block count too large: %d\n",
+						(int) data->blocks);
+		return -EINVAL;
+	}
+
+	/* Initialize the data transferred */
+	data->bytes_xfered = 0;
+
+	/* Make sure DMAC engine is enabled */
+	n329_mmc_write(host, n329_mmc_read(host, REG_DMACCSR) | 
+					DMAC_EN, REG_DMACCSR);
+
+	/* Make sure SD functionality is enabled */
+	n329_mmc_write(host, n329_mmc_read(host, REG_FMICR) | 
+					FMI_SD_EN, REG_FMICR);
+
+	/* Disable DMAC and FMI interrupts */
+	n329_mmc_write(host, 0, REG_DMACIER);
+	n329_mmc_write(host, 0, REG_FMIIER);
+
+	/* Keep track of the host data */
+	WARN_ON(host->data != NULL);
+	host->data = data;
+
+	/* Read the SDCR register */
+	csr = n329_mmc_read(host, REG_SDCR);
+
+	/* Clear port, BLK_CNT, CMD_CODE, and all xx_EN fields */
+	csr &= 0x9f00c080;
+
+	/* Set the port selection bits */
+	csr |= SDCR_SDPORT_0;
+
+	/* Set the bus width bit */
+	csr |= host->bus_width == 1 ? SDCR_DBW : 0;
+
+	/* Set the DI/DO bits and configure buffer for DMA write transfer */
+	if (data->flags & MMC_DATA_READ) {
+		csr = csr | SDCR_DI_EN;
+	} else if (data->flags & MMC_DATA_WRITE) {
+		n329_mmc_sg_to_dma(host, data);
+		csr = csr | SDCR_DO_EN;
+	}
+	n329_mmc_write(host, host->physical_address, REG_DMACSAR);
+
+	/* Set the block length */
+	n329_mmc_write(host, block_length - 1, REG_SDBLEN);
+
+	/* Set the block count */
+	csr |= block_count << 16;
+
+	/* Write 1 bits to clear all SDISR */
+	n329_mmc_write(host, 0xffffffff, REG_SDISR);
+
+	/* Update the timeout to be suitable data transfer */
+	n329_mmc_write(host, 0xfffff, REG_SDTMOUT);
+
+	/* Initiate the transfer */
+	n329_mmc_write(host, csr, REG_SDCR);
+
+	/* Wait for data transfer complete */
+	while (n329_mmc_read(host, REG_SDCR) & (SDCR_DO_EN | SDCR_DI_EN)) {
+		/* Read the status register */
+		u32 sdisr = n329_mmc_read(host, REG_SDISR);
+
+		/* Look for CRC error */
+		if (sdisr & SDISR_CRC_IF) {
+			dev_info(mmc_dev(host->mmc), "%s: CRC error\n", __func__);
+			error = -EIO;
+			break;
+		}
+		/* Look for timeouts */
+		if (sdisr & SDISR_DITO_IF) {
+			dev_info(mmc_dev(host->mmc), "%s: timeout error\n", __func__);
+			error = -ETIMEDOUT;
+			break;
+		}
+		/* Look for card removal */
+		if (sdisr & SDISR_CD_Card) {
+			dev_info(mmc_dev(host->mmc), "%s: card removal error\n", __func__);
+			error = -ENODEV;
+			break;
+		}
+
+		schedule();
+	}
+
+	/* Clear the timeout register and error flags */
+	n329_mmc_write(host, 0x0, REG_SDTMOUT);
+
+	if (!error) {
+		/* Transfer from the DMA buffer to the scatter gather segments */
+		if (data->flags & MMC_DATA_READ)
+			n329_mmc_dma_to_sg(host, data);
+	} else {
+		/* Mark all data blocks as error */ 
+		data->bytes_xfered = 0;
+
+		/* Reset the SD internal state */
+		n329_mmc_write(host, n329_mmc_read(host, REG_SDCR) |
+							SDCR_SWRST, REG_SDCR);
+		while (n329_mmc_read(host, REG_SDCR) & SDCR_SWRST);
+	}
+
+	/* Reset the command data */
+	host->data = NULL;
+
+	return error;
 }
 
 static void n329_mmc_bc(struct n329_mmc_host *host)
@@ -430,6 +565,9 @@ static void n329_mmc_bc(struct n329_mmc_host *host)
 	/* No data so disable blk transfer done interrupt */
 	n329_mmc_write(host, n329_mmc_read(host, REG_SDIER) &
 						~SDIER_BLKD_IEN, REG_SDIER);
+
+	/* Write 1 bits to clear all SDISR */
+	n329_mmc_write(host, 0xffffffff, REG_SDISR);
 
 	/* Set the command argument */
 	n329_mmc_write(host, cmd->arg, REG_SDARG);
@@ -513,6 +651,9 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 	n329_mmc_write(host, n329_mmc_read(host, REG_SDIER) &
 						~SDIER_BLKD_IEN, REG_SDIER);
 
+	/* Write 1 bits to clear all SDISR */
+	n329_mmc_write(host, 0xffffffff, REG_SDISR);
+
 	/* Set the command argument */
 	n329_mmc_write(host, cmd->arg, REG_SDARG);
 
@@ -582,28 +723,11 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 	struct mmc_command *cmd = host->cmd;
 	struct mmc_data *data = cmd->data;
 	unsigned int error = 0;
-	u32 block_count, block_length;
 	u32 csr;
-
-	dev_dbg(mmc_dev(host->mmc), "%s: cmd=%d\n", __func__, (int) cmd->opcode);
 
 	/* Sanity check that we have data */
 	if (!data) {
 		dev_err(mmc_dev(host->mmc), "Invalid data\n");
-		return;
-	}
-
-	/* Sanity check block size and block count */
-	block_count = data->blocks;
-	block_length = data->blksz;
-	if (block_length > 512) {
-		dev_err(mmc_dev(host->mmc), "Block length too large: %d\n",
-						(int) data->blksz);
-		return;
-	}
-	if (block_count >= 256) {
-		dev_err(mmc_dev(host->mmc), "Block count too large: %d\n",
-						(int) data->blocks);
 		return;
 	}
 
@@ -655,11 +779,7 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 	}
 
 	/* Write 1 bits to clear all SDISR */
-	n329_mmc_write(host, 0xFFFFFFFF, REG_SDISR);
-
-	/* Enable the block transfer done interrupt */
-	// XXX n329_mmc_write(host, n329_mmc_read(host, REG_SDIER) |
-	// XXX 					SDIER_BLKD_IEN, REG_SDIER);
+	n329_mmc_write(host, 0xffffffff, REG_SDISR);
 
 	/* Set the command argument */
 	n329_mmc_write(host, cmd->arg, REG_SDARG);
@@ -711,111 +831,15 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 	/* Pass back any error */
 	cmd->error = error;
 
-	/* Keep track of the host data */
-	WARN_ON(host->data != NULL);
-	host->data = data;
-
-	/* If an error, reset the SD internal state */
 	if (error) {
+		/* If an error, reset the SD internal state */
 		n329_mmc_write(host, n329_mmc_read(host, REG_SDCR) |
 							SDCR_SWRST, REG_SDCR);
 		while (n329_mmc_read(host, REG_SDCR) & SDCR_SWRST);
 	} else {
-
-		/* Read the SDCR register */
-		csr = n329_mmc_read(host, REG_SDCR);
-
-		/* Clear port, BLK_CNT, CMD_CODE, and all xx_EN fields */
-		csr &= 0x9f00c080;
-
-		/* Set command code and enable command out */
-		csr |= (cmd->opcode << 8);
-
-		/* Set the port selection bits */
-		csr |= SDCR_SDPORT_0;
-
-		/* Set the bus width bit */
-		csr |= host->bus_width == 1 ? SDCR_DBW : 0;
-
-		/* Set the DI/DO bits and configure buffer for DMA write transfer */
-		if (data->flags & MMC_DATA_READ) {
-			csr = csr | SDCR_DI_EN;
-		} else if (data->flags & MMC_DATA_WRITE) {
-			n329_mmc_sg_to_dma(host, data);
-			csr = csr | SDCR_DO_EN;
-		}
-		n329_mmc_write(host, host->physical_address, REG_DMACSAR);
-
-		/* Set the block length */
-		n329_mmc_write(host, block_length - 1, REG_SDBLEN);
-
-		/* Set the block count */
-		csr |= block_count << 16;
-
-		/* Write 1 bits to clear all SDISR */
-		n329_mmc_write(host, 0xFFFFFFFF, REG_SDISR);
-
-		/* Update the timeout to be suitable data transfer */
-		n329_mmc_write(host, 0xfffff, REG_SDTMOUT);
-
-		/* Initiate the transfer */
-		n329_mmc_write(host, csr, REG_SDCR);
-
-		/* Wait for data transfer complete */
-		while (n329_mmc_read(host, REG_SDCR) & (SDCR_DO_EN | SDCR_DI_EN)) {
-			u32 sdisr = n329_mmc_read(host, REG_SDISR);
-			/* Look for CRC error */
-			if (sdisr & SDISR_CRC_IF) {
-				dev_info(mmc_dev(host->mmc), "%s: CRC error\n", __func__);
-				error = -EIO;
-				break;
-			}
-			/* Look for timeouts */
-			if (sdisr & SDISR_DITO_IF) {
-				dev_info(mmc_dev(host->mmc), "%s: timeout error\n", __func__);
-				error = -ETIMEDOUT;
-				break;
-			}
-			/* Look for card removal */
-			if (sdisr & SDISR_CD_Card) {
-				dev_info(mmc_dev(host->mmc), "%s: card removal error\n", __func__);
-				error = -ENODEV;
-				break;
-			}
-
-			schedule();
-		}
-
-		dev_info(mmc_dev(host->mmc), "DMACISR: %08x\n", 
-			n329_mmc_read(host, REG_DMACISR));
-		dev_info(mmc_dev(host->mmc), "FMIISR: %08x\n", 
-			n329_mmc_read(host, REG_FMIISR));
-		dev_info(mmc_dev(host->mmc), "error: %d\n", error);
-
-		/* Clear the timeout register and error flags */
-		n329_mmc_write(host, 0x0, REG_SDTMOUT);
-		n329_mmc_write(host, SDISR_DITO_IF | SDISR_CRC_IF, REG_SDISR);
-
-		/* Set the request error */
-		data->error = error;
-
-		if (!error) {
-			/* Put the scatter data */
-			if (data->flags & MMC_DATA_READ)
-				n329_mmc_dma_to_sg(host, data);
-		} else {
-			/* Mark all data blocks as error */ 
-			data->bytes_xfered = 0;
-
-			/* Reset the SD internal state */
-			n329_mmc_write(host, n329_mmc_read(host, REG_SDCR) |
-								SDCR_SWRST, REG_SDCR);
-			while (n329_mmc_read(host, REG_SDCR) & SDCR_SWRST);
-		}
+		/* Perform the transfer of data */
+		data->error = n329_mmc_do_transfer(host);
 	}
-
-	/* Reset the command data */
-	host->data = NULL;
 
 	/* Do a stop command? */
 	if (!cmd->error && host->mrq->stop) 
