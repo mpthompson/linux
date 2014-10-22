@@ -306,9 +306,10 @@ static void n329_mmc_dma_to_sg(struct n329_mmc_host *host,
 	len = data->sg_len;
 	size = data->blksz * data->blocks;
 
-	if (size > 32) {
-		dev_info(mmc_dev(host->mmc), "%08x %08x %08x %08x\n", 
-			dmabuf[0], dmabuf[1], dmabuf[2], dmabuf[3]);
+	for (i = 0; i < size / 4; i += 4)
+	{
+		dev_info(mmc_dev(host->mmc), "%04x: %08x %08x %08x %08x\n", 
+				i * 4, dmabuf[i], dmabuf[i + 1], dmabuf[i + 2], dmabuf[i + 3]);
 	}
 
 	/* Loop over each scatter gather entry */
@@ -368,6 +369,33 @@ static int n329_mmc_setup_wp(struct n329_mmc_host *host, struct device *dev)
 	}
 
 	return 0;
+}
+
+static void n329_mmc_get_response(struct n329_mmc_host *host)
+{
+	struct mmc_command *cmd = host->cmd;
+
+	if (mmc_resp_type(cmd) & MMC_RSP_136) {
+		/* Read big-endian R2 response from DMA buffer */
+		unsigned int tmp[5];
+		tmp[0] = be32_to_cpu(n329_mmc_read(host, REG_FB_0));
+		tmp[1] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 4));
+		tmp[2] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 8));
+		tmp[3] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 12));
+		tmp[4] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 16));
+		cmd->resp[0] = ((tmp[0] & 0x00ffffff) << 8) |
+					   ((tmp[1] & 0xff000000) >> 24);
+		cmd->resp[1] = ((tmp[1] & 0x00ffffff) << 8) |
+					   ((tmp[2] & 0xff000000) >> 24);
+		cmd->resp[2] = ((tmp[2] & 0x00ffffff) << 8) |
+					   ((tmp[3] & 0xff000000) >> 24);
+		cmd->resp[3] = ((tmp[3] & 0x00ffffff) << 8) |
+					   ((tmp[4] & 0xff000000) >> 24);
+	} else if (mmc_resp_type(cmd) & MMC_RSP_PRESENT) {
+ 		cmd->resp[0] = (n329_mmc_read(host, REG_SDRSP0) << 8) |
+					   (n329_mmc_read(host, REG_SDRSP1) & 0xff);
+		cmd->resp[1] = cmd->resp[2] = cmd->resp[3] = 0;
+	}
 }
 
 static void n329_mmc_bc(struct n329_mmc_host *host)
@@ -508,6 +536,9 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 			}
 		}
 
+		/* Get the response */
+		n329_mmc_get_response(host);
+
 		/* Check for CRC errors */
 		if (!error && (mmc_resp_type(cmd) & MMC_RSP_CRC)) {
 			if (n329_mmc_read(host, REG_SDISR) & SDISR_CRC_7) {
@@ -518,31 +549,6 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 		/* Clear the timeout register and error flags */
 		n329_mmc_write(host, 0x0, REG_SDTMOUT);
 		n329_mmc_write(host, SDISR_RITO_IF | SDISR_CRC_7, REG_SDISR);
-
-		/* Read the response if no error so far */
-		if (!error) {
-			if (mmc_resp_type(cmd) == MMC_RSP_R2) {
-				/* Read big-endian R2 response from DMA buffer */
-				unsigned int tmp[5];
-				tmp[0] = be32_to_cpu(n329_mmc_read(host, REG_FB_0));
-				tmp[1] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 4));
-				tmp[2] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 8));
-				tmp[3] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 12));
-				tmp[4] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 16));
-				cmd->resp[0] = ((tmp[0] & 0x00ffffff) << 8) |
-							   ((tmp[1] & 0xff000000) >> 24);
-				cmd->resp[1] = ((tmp[1] & 0x00ffffff) << 8) |
-							   ((tmp[2] & 0xff000000) >> 24);
-				cmd->resp[2] = ((tmp[2] & 0x00ffffff) << 8) |
-							   ((tmp[3] & 0xff000000) >> 24);
-				cmd->resp[3] = ((tmp[3] & 0x00ffffff) << 8) |
-							   ((tmp[4] & 0xff000000) >> 24);
-			} else {
-				cmd->resp[0] = (n329_mmc_read(host, REG_SDRSP0) << 8) |
-							   (n329_mmc_read(host, REG_SDRSP1) & 0xff);
-				cmd->resp[1] = cmd->resp[2] = cmd->resp[3] = 0;
-			}
-		}
 	} else {
 		/* Wait for command to complete */
 		while (n329_mmc_read(host, REG_SDCR) & SDCR_CO_EN) {
@@ -648,23 +654,6 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 		n329_mmc_write(host, 0x1fff, REG_SDTMOUT);
 	}
 
-	/* Set the block length */
-	n329_mmc_write(host, block_length - 1, REG_SDBLEN);
-
-	/* Set the block count */
-	csr |= block_count << 16;
-
-	/* Configure the buffer for DMA transfer */
-	if (data->flags & MMC_DATA_READ) {
-		host->total_length = 0;
-		csr = csr | SDCR_DI_EN;
-	} else if (data->flags & MMC_DATA_WRITE) {
-		host->total_length = block_length * block_count;
-		n329_mmc_sg_to_dma(host, data);
-		csr = csr | SDCR_DO_EN;
-	}
-	n329_mmc_write(host, host->physical_address, REG_DMACSAR);
-
 	/* Write 1 bits to clear all SDISR */
 	n329_mmc_write(host, 0xFFFFFFFF, REG_SDISR);
 
@@ -695,6 +684,9 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 			}
 		}
 
+		/* Get the response */
+		n329_mmc_get_response(host);
+
 		/* Check for CRC errors */
 		if (!error && (mmc_resp_type(cmd) & MMC_RSP_CRC)) {
 			if (n329_mmc_read(host, REG_SDISR) & SDISR_CRC_7) {
@@ -705,31 +697,6 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 		/* Clear the timeout register and error flags */
 		n329_mmc_write(host, 0x0, REG_SDTMOUT);
 		n329_mmc_write(host, SDISR_RITO_IF | SDISR_CRC_7, REG_SDISR);
-
-		/* Read the response if no error so far */
-		if (!error) {
-			if (mmc_resp_type(cmd) == MMC_RSP_R2) {
-				/* Read big-endian R2 response from DMA buffer */
-				unsigned int tmp[5];
-				tmp[0] = be32_to_cpu(n329_mmc_read(host, REG_FB_0));
-				tmp[1] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 4));
-				tmp[2] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 8));
-				tmp[3] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 12));
-				tmp[4] = be32_to_cpu(n329_mmc_read(host, REG_FB_0 + 16));
-				cmd->resp[0] = ((tmp[0] & 0x00ffffff) << 8) |
-							   ((tmp[1] & 0xff000000) >> 24);
-				cmd->resp[1] = ((tmp[1] & 0x00ffffff) << 8) |
-							   ((tmp[2] & 0xff000000) >> 24);
-				cmd->resp[2] = ((tmp[2] & 0x00ffffff) << 8) |
-							   ((tmp[3] & 0xff000000) >> 24);
-				cmd->resp[3] = ((tmp[3] & 0x00ffffff) << 8) |
-							   ((tmp[4] & 0xff000000) >> 24);
-			} else {
-				cmd->resp[0] = (n329_mmc_read(host, REG_SDRSP0) << 8) |
-							   (n329_mmc_read(host, REG_SDRSP1) & 0xff);
-				cmd->resp[1] = cmd->resp[2] = cmd->resp[3] = 0;
-			}
-		}
 	} else {
 		/* Wait for command to complete */
 		while (n329_mmc_read(host, REG_SDCR) & SDCR_CO_EN) {
@@ -754,8 +721,45 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 							SDCR_SWRST, REG_SDCR);
 		while (n329_mmc_read(host, REG_SDCR) & SDCR_SWRST);
 	} else {
+
+		/* Read the SDCR register */
+		csr = n329_mmc_read(host, REG_SDCR);
+
+		/* Clear port, BLK_CNT, CMD_CODE, and all xx_EN fields */
+		csr &= 0x9f00c080;
+
+		/* Set command code and enable command out */
+		csr |= (cmd->opcode << 8);
+
+		/* Set the port selection bits */
+		csr |= SDCR_SDPORT_0;
+
+		/* Set the bus width bit */
+		csr |= host->bus_width == 1 ? SDCR_DBW : 0;
+
+		/* Set the DI/DO bits and configure buffer for DMA write transfer */
+		if (data->flags & MMC_DATA_READ) {
+			csr = csr | SDCR_DI_EN;
+		} else if (data->flags & MMC_DATA_WRITE) {
+			n329_mmc_sg_to_dma(host, data);
+			csr = csr | SDCR_DO_EN;
+		}
+		n329_mmc_write(host, host->physical_address, REG_DMACSAR);
+
+		/* Set the block length */
+		n329_mmc_write(host, block_length - 1, REG_SDBLEN);
+
+		/* Set the block count */
+		csr |= block_count << 16;
+
+		/* Write 1 bits to clear all SDISR */
+		n329_mmc_write(host, 0xFFFFFFFF, REG_SDISR);
+
 		/* Update the timeout to be suitable data transfer */
 		n329_mmc_write(host, 0xfffff, REG_SDTMOUT);
+
+		/* Initiate the transfer */
+		n329_mmc_write(host, csr, REG_SDCR);
 
 		/* Wait for data transfer complete */
 		while (n329_mmc_read(host, REG_SDCR) & (SDCR_DO_EN | SDCR_DI_EN)) {
@@ -782,17 +786,18 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 			schedule();
 		}
 
+		dev_info(mmc_dev(host->mmc), "DMACISR: %08x\n", 
+			n329_mmc_read(host, REG_DMACISR));
+		dev_info(mmc_dev(host->mmc), "FMIISR: %08x\n", 
+			n329_mmc_read(host, REG_FMIISR));
+		dev_info(mmc_dev(host->mmc), "error: %d\n", error);
+
 		/* Clear the timeout register and error flags */
 		n329_mmc_write(host, 0x0, REG_SDTMOUT);
 		n329_mmc_write(host, SDISR_DITO_IF | SDISR_CRC_IF, REG_SDISR);
 
 		/* Set the request error */
 		data->error = error;
-
-		dev_info(mmc_dev(host->mmc), "DMACISR: %08x\n", 
-			n329_mmc_read(host, REG_DMACISR));
-		dev_info(mmc_dev(host->mmc), "FMIISR: %08x\n", 
-			n329_mmc_read(host, REG_FMIISR));
 
 		if (!error) {
 			/* Put the scatter data */
@@ -801,6 +806,11 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 		} else {
 			/* Mark all data blocks as error */ 
 			data->bytes_xfered = 0;
+
+			/* Reset the SD internal state */
+			n329_mmc_write(host, n329_mmc_read(host, REG_SDCR) |
+								SDCR_SWRST, REG_SDCR);
+			while (n329_mmc_read(host, REG_SDCR) & SDCR_SWRST);
 		}
 	}
 
@@ -808,7 +818,7 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 	host->data = NULL;
 
 	/* Do a stop command? */
-	if (host->mrq->stop) 
+	if (!cmd->error && host->mrq->stop) 
 		n329_mmc_start_cmd(host, host->mrq->stop);
 	else
 		mmc_request_done(host->mmc, host->mrq);
