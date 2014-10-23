@@ -25,9 +25,12 @@
 
 	ahb@B0000000 {
 		mmc0: sic@B1006000 {
-			compatible = "nuvoton,n32905-mmc";
 			pinctrl-names = "default";
 			pinctrl-0 = <&mmc0_pins &mmc0_io_pins>;
+			status = "okay";
+		};
+
+		uhc@B1009000 {
 			status = "okay";
 		};
 	};

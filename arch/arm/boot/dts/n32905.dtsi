@@ -84,9 +84,26 @@
 		};
 
 		mmc0: sic@B1006000 {
+			compatible = "nuvoton,n32905-mmc";
 			reg = <0xB1006000 0x1000>;
 			interrupts = <17>;
 			clocks = <&clks 43>, <&clks 107>;
+			status = "disabled";
+		};
+
+		uhc@B1009000 {
+			compatible = "nuvoton,uhc";
+			reg = <0xB1009000 0x1000>;
+			interrupts = <18>;
+			clocks = <&clks 53>, <&clks 54>;
+			status = "disabled";
+		};
+
+		udc@B100A000 {
+			compatible = "nuvoton,udc";
+			reg = <0xB100A000 0x1000>;
+			interrupts = <16>;
+			clocks = <&clks 59>, <&clks 60>;
 			status = "disabled";
 		};
 	};
