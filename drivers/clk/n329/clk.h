@@ -34,11 +34,6 @@ struct clk *clk_register_split_divider(struct device *dev, const char *name,
 		u8 lo_shift, u8 lo_width, u8 hi_shift, u8 hi_width,
 		u8 clk_divider_flags, spinlock_t *lock);
 
-struct clk *clk_register_source_divider(struct device *dev, const char *name,
-		const char *parent_name, unsigned long flags,
-		void __iomem *reg, u8 shift, u8 width, u8 source,
-		u8 clk_divider_flags, spinlock_t *lock);
-
 static inline struct clk *n329_clk_fixed(const char *name, int rate)
 {
 	return clk_register_fixed_rate(NULL, name, NULL, CLK_IS_ROOT, rate);
@@ -83,17 +78,17 @@ static inline struct clk *n329_clk_split_div(const char *name,
 			u8 lo_shift, u8 lo_width, u8 hi_shift, u8 hi_width)
 {
 	return clk_register_split_divider(NULL, name, parent_name, 
-			CLK_SET_RATE_PARENT, reg, lo_shift, lo_width, 
-			hi_shift, hi_width, 0, &n329_lock);
+				CLK_SET_RATE_PARENT, reg, lo_shift, lo_width, 
+				hi_shift, hi_width, 0, &n329_lock);
 }
 
 static inline struct clk *n329_clk_source_div(const char *name, 
 			const char *parent_name, void __iomem *reg, 
-			u8 shift, u8 width, u8 source)
+			u8 shift, u8 width)
 {
-	return clk_register_source_divider(NULL, name, parent_name, 
-			CLK_SET_RATE_PARENT, reg, shift, width, source, 
-			0, &n329_lock);
+	return clk_register_divider(NULL, name, parent_name, 
+				CLK_SET_RATE_PARENT, reg, shift, width, 
+				0, &n329_lock);
 }
 
 static inline struct clk *n329_clk_table_div(const char *name, 

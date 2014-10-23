@@ -92,7 +92,7 @@
 		};
 
 		uhc@B1009000 {
-			compatible = "nuvoton,uhc";
+			compatible = "nuvoton,ohci-n329";
 			reg = <0xB1009000 0x1000>;
 			interrupts = <18>;
 			clocks = <&clks 53>, <&clks 54>;

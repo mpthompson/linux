@@ -892,11 +892,10 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	struct n329_mmc_host *host;
 	struct mmc_host *mmc;
 	struct resource *iores;
-	int irq_err, ret = 0;
+	int ret = 0;
 
 	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	irq_err = platform_get_irq(pdev, 0);
-	if (!iores || irq_err < 0)
+	if (!iores)
 		return -EINVAL;
 
 	mmc = mmc_alloc_host(sizeof(struct n329_mmc_host), &pdev->dev);
