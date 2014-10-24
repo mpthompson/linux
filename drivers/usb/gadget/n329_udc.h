@@ -12,9 +12,9 @@
 #ifndef __LINUX_USB_GADGET_N329_UDC_H__
 #define __LINUX_USB_GADGET_N329_UDC_H__
 
-#define DMA_ADDR_INVALID (~(dma_addr_t)0)
+#define DMA_ADDR_INVALID	(~(dma_addr_t)0)
 
-#define N329_ENDPOINTS       7
+#define N329_ENDPOINTS		7
 
 enum ep0_state {
 	EP0_IDLE,
