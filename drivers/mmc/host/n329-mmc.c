@@ -161,6 +161,8 @@ struct n329_mmc_host {
 	void __iomem *base;
 };
 
+extern unsigned long n329_clocks_config_sd(unsigned long rate);
+
 static void n329_mmc_start_cmd(struct n329_mmc_host *host,
 			 struct mmc_command *cmd);
 
@@ -822,7 +824,7 @@ static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	if (ios->clock) {
 		/* Set the clock rate of the SD clock */
-		clk_set_rate(host->sd_clk, ios->clock);
+		n329_clocks_config_sd(ios->clock);
 
 		/* Delay a bit */
 		udelay(1000);
