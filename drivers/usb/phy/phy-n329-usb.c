@@ -122,17 +122,6 @@ static int n329_phy_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	/* Some SoCs don't have anatop registers */
-	if (of_get_property(np, "fsl,anatop", NULL)) {
-		n329_phy->regmap_anatop = syscon_regmap_lookup_by_phandle
-			(np, "fsl,anatop");
-		if (IS_ERR(n329_phy->regmap_anatop)) {
-			dev_dbg(&pdev->dev,
-				"failed to find regmap for anatop\n");
-			return PTR_ERR(n329_phy->regmap_anatop);
-		}
-	}
-
 	ret = of_alias_get_id(np, "usbphy");
 	if (ret < 0)
 		dev_dbg(&pdev->dev, "failed to get alias id, errno %d\n", ret);
@@ -142,10 +131,10 @@ static int n329_phy_probe(struct platform_device *pdev)
 	n329_phy->phy.dev = &pdev->dev;
 	n329_phy->phy.label = DRIVER_NAME;
 	n329_phy->phy.init = n329_phy_init;
-	n329_phy->phy.shutdown = mxs_phy_shutdown;
-	n329_phy->phy.set_suspend = mxs_phy_suspend;
-	n329_phy->phy.notify_connect = mxs_phy_on_connect;
-	n329_phy->phy.notify_disconnect = mxs_phy_on_disconnect;
+	n329_phy->phy.shutdown = n329_phy_shutdown;
+	n329_phy->phy.set_suspend = n329_phy_suspend;
+	n329_phy->phy.notify_connect = n329_phy_on_connect;
+	n329_phy->phy.notify_disconnect = n329_phy_on_disconnect;
 	n329_phy->phy.type =USB_PHY_TYPE_USB2 ;
 	n329_phy->phy.set_wakeup = n329_phy_set_wakeup;
 

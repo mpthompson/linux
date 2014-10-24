@@ -91,19 +91,19 @@
 			status = "disabled";
 		};
 
+		udc@B1008000 {
+			compatible = "nuvoton,udc";
+			reg = <0xB1008000 0x1000>;
+			interrupts = <16>;
+			clocks = <&clks 59>, <&clks 60>;
+			status = "disabled";
+		};
+
 		uhc@B1009000 {
 			compatible = "nuvoton,ohci-n329";
 			reg = <0xB1009000 0x1000>;
 			interrupts = <18>;
 			clocks = <&clks 53>, <&clks 54>;
-			status = "disabled";
-		};
-
-		udc@B100A000 {
-			compatible = "nuvoton,udc";
-			reg = <0xB100A000 0x1000>;
-			interrupts = <16>;
-			clocks = <&clks 59>, <&clks 60>;
 			status = "disabled";
 		};
 	};
@@ -175,6 +175,15 @@
 					N32905_PAD_GPE06__SDCMD
 					N32905_PAD_GPE07__SDCLK
 					N32905_PAD_GPA01__SD_CD
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+
+			usb0_pins: usb0-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPA03__UHL_DP1
+					N32905_PAD_GPA04__UHL_DM1
 				>;
 				nuvoton,pull-up = <N329_PULL_DISABLE>;
 			};

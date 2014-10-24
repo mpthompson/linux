@@ -223,6 +223,18 @@ config USB_GR_UDC
           Select this to support Aeroflex Gaisler GRUSBDC cores from the GRLIB
 	  VHDL IP core library.
 
+config USB_N329_UDC
+	tristate "Nuvoton N329XX USB Gadget Driver"
+	depends on ARCH_N329
+	help
+	   The Nuvoton N329XX USB device controller is complaint with 
+	   USB 2.0 specification and it contains four configurable endpoints 
+	   in addition to a control endpoint.
+
+	   Say "y" to link the driver statically, or "m" to build a
+	   dynamically linked module called "n329_udc" and force all
+	   gadget drivers to also be dynamically linked.
+
 config USB_OMAP
 	tristate "OMAP USB Device Controller"
 	depends on ARCH_OMAP1

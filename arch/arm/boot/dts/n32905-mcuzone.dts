@@ -24,13 +24,16 @@
 	compatible = "nuvoton,n32905-mcuzone", "nuvoton,n32905", "nuvoton,n329";
 
 	ahb@B0000000 {
+		udc@B1008000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&usb0_pins>;
+			status = "okay";
+		};
+
 		mmc0: sic@B1006000 {
 			pinctrl-names = "default";
 			pinctrl-0 = <&mmc0_pins &mmc0_wp_pin>;
 			gpios = <&gpio 0 0>;
-			status = "okay";
-		};
-		uhc@B1009000 {
 			status = "okay";
 		};
 	};
