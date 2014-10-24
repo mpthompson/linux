@@ -134,10 +134,116 @@
 	#define REFCLK		BIT(6)
 	#define CLK48		BIT(7)
 	#define VBUS_DETECT	BIT(8)
-	#define PHY_SUSPEND	BIT(9)								
+	#define PHY_SUSPEND	BIT(9)
 	#define VBUS_STATUS	BIT(31)
 
-#define USBD_INTERVAL_TIME  100	
+
+#define USBD_DMA_LEN			0x10000
+#define USB_HIGHSPEED			2
+#define USB_FULLSPEED			1
+#define EPSTADDR        		0x400
+#define CBW_SIZE				64
+
+#define DMA_READ				1
+#define DMA_WRITE				2
+
+/*
+ * Standard requests
+ */
+#define USBR_GET_STATUS			0x00
+#define USBR_CLEAR_FEATURE		0x01
+#define USBR_SET_FEATURE		0x03
+#define USBR_SET_ADDRESS		0x05
+#define USBR_GET_DESCRIPTOR		0x06
+#define USBR_SET_DESCRIPTOR		0x07
+#define USBR_GET_CONFIGURATION	0x08
+#define USBR_SET_CONFIGURATION	0x09
+#define USBR_GET_INTERFACE		0x0A
+#define USBR_SET_INTERFACE		0x0B
+#define USBR_SYNCH_FRAME		0x0C
+
+
+//Bit Definitions of IRQ_ENB/STAT register
+#define	IRQ_USB_STAT			0x01
+#define IRQ_CEP					0x02
+#define IRQ_NCEP				0xfc
+
+//Definition of Bits in USB_IRQ_STS register
+#define USB_SOF					0x01
+#define USB_RST_STS				0x02
+#define	USB_RESUME				0x04
+#define	USB_SUS_REQ				0x08
+#define	USB_HS_SETTLE	        0x10
+#define	USB_DMA_REQ				0x20
+#define USABLE_CLK				0x40
+#define USB_VBUS_STS			0x100
+
+
+//Definition of Bits in USB_OPER register
+#define USB_GEN_RES             0x1
+#define USB_HS		        	0x2
+#define USB_CUR_SPD_HS          0x4
+
+//Definition of Bits in CEP_IRQ_STS register
+#define CEP_SUPTOK	 			0x0001
+#define CEP_SUPPKT				0x0002
+#define CEP_OUT_TOK				0x0004
+#define CEP_IN_TOK				0x0008
+#define CEP_PING_TOK	        0x0010
+#define CEP_DATA_TXD	        0x0020
+#define CEP_DATA_RXD	        0x0040
+#define CEP_NAK_SENT	        0x0080
+#define CEP_STALL_SENT	        0x0100
+#define CEP_USB_ERR				0x0200
+#define CEP_STS_END				0x0400
+#define CEP_BUFF_FULL	        0x0800
+#define CEP_BUFF_EMPTY	        0x1000
+
+//Definition of Bits in CEP_CTRL_STS register
+#define CEP_NAK_CLEAR			0x00  //writing zero clears the nak bit
+#define CEP_SEND_STALL			0x02
+#define CEP_ZEROLEN				0x04
+#define CEP_FLUSH				0x08
+
+//Definition of Bits in EP_IRQ_STS register
+#define EP_BUFF_FULL	        0x001
+#define EP_BUFF_EMPTY	        0x002
+#define EP_SHORT_PKT	        0x004
+#define EP_DATA_TXD				0x008
+#define EP_DATA_RXD				0x010
+#define EP_OUT_TOK				0x020
+#define EP_IN_TOK				0x040
+#define EP_PING_TOK				0x080
+#define EP_NAK_SENT				0x100
+#define EP_STALL_SENT	        0x200
+#define EP_USB_ERR				0x800
+#define EP_BO_SHORT_PKT			0x1000
+
+//Bit Definitons of EP_RSP_SC Register
+#define EP_BUFF_FLUSH           0x01
+#define EP_MODE                 0x06
+#define EP_MODE_AUTO	        0x01
+#define EP_MODE_MAN 	        0x02
+#define EP_MODE_FLY				0x03
+#define EP_TOGGLE				0x8
+#define EP_HALT					0x10
+#define EP_ZERO_IN              0x20
+#define EP_PKT_END              0x40
+
+//Bit Definitons of EP_CFG Register
+#define EP_VALID				0x01
+#define EP_TYPE					0x06 //2-bit size
+#define EP_TYPE_BLK				0x01
+#define EP_TYPE_INT				0x02
+#define EP_TYPE_ISO				0x03
+#define EP_DIR					0x08
+#define EP_NO					0xf0 //4-bit size
+
+/* Define Endpoint feature */
+#define Ep_In                   0x01
+#define Ep_Out                  0x00
+
+#define USBD_INTERVAL_TIME  100
 
 extern unsigned long n329_clocks_config_usb20(unsigned long rate);
 
@@ -150,7 +256,6 @@ static struct timer_list usbd_timer;
 static u32 volatile g_USB_Mode_Check = 0;
 static int volatile g_usbd_access = 0;
 static int volatile usb_eject_flag = 0;
-static void timer_check_usbd_access(unsigned long dummy);
 
 static const char gadget_name [] = "w55fa93-udc";
 static const char driver_desc [] = DRIVER_DESC;
@@ -179,7 +284,17 @@ static inline void n329_udc_write(u32 value, u32 addr)
 	__raw_writel(value, udc_base + addr);
 }
 
+static inline void n329_udc_writeb(u8 value, u32 addr)
+{
+	__raw_writeb(value, udc_base + addr);
+}
+
 static inline u32 n329_udc_read(u32 addr)
+{
+	return __raw_readl(udc_base + addr);
+}
+
+static inline u8 n329_udc_readb(u32 addr)
 {
 	return __raw_readl(udc_base + addr);
 }
@@ -216,8 +331,8 @@ static void n329_udc_done(struct n329_ep *ep, struct n329_request *req, int stat
 		status = req->req.status;
 
 	if (req->dma_mapped) {
-		dma_unmap_single(&udc->pdev->dev, req->req.dma, 
-				req->req.length, ep->EP_Dir ? 
+		dma_unmap_single(&udc->pdev->dev, req->req.dma,
+				req->req.length, ep->EP_Dir ?
 						DMA_TO_DEVICE : DMA_FROM_DEVICE);
 		req->req.dma = DMA_ADDR_INVALID;
 		req->dma_mapped = 0;
@@ -231,7 +346,7 @@ static void n329_udc_start_write(struct n329_ep *ep, u8* buf, u32 length)
 {
 	struct n329_udc *dev = ep->dev;
 	u32 volatile reg;
-	
+
 	if (dev->usb_dma_trigger) {
 		printk("*** dma trigger ***\n");
 		return;
@@ -241,7 +356,7 @@ static void n329_udc_start_write(struct n329_ep *ep, u8* buf, u32 length)
 	dev->usb_dma_cnt = length;
 	dev->usb_dma_owner = ep->index;
 
-	n329_udc_write(USB_DMA_REQ | USB_RST_STS | 
+	n329_udc_write(USB_DMA_REQ | USB_RST_STS |
 				   USB_SUS_REQ | USB_VBUS_STS,
 				   REG_USBD_IRQ_ENB);
 
@@ -259,7 +374,7 @@ static void n329_udc_start_write(struct n329_ep *ep, u8* buf, u32 length)
 static void n329_udc_start_read(struct n329_ep *ep, u8* buf, u32 length)
 {
 	struct n329_udc	*dev = ep->dev;
-	
+
 	if (dev->usb_dma_trigger) {
 		printk("*** dma trigger ***\n");
 		return;
@@ -267,7 +382,7 @@ static void n329_udc_start_read(struct n329_ep *ep, u8* buf, u32 length)
 
 	g_usbd_access++;
 
-	n329_udc_write(USB_DMA_REQ | USB_RST_STS | USB_SUS_REQ | USB_VBUS_STS, 
+	n329_udc_write(USB_DMA_REQ | USB_RST_STS | USB_SUS_REQ | USB_VBUS_STS,
 					REG_USBD_IRQ_ENB);
 
 	/* Tell DMA the memory address and length */
@@ -279,7 +394,7 @@ static void n329_udc_start_read(struct n329_ep *ep, u8* buf, u32 length)
 	dev->usb_dma_loop = (length+31)/32;
 	dev->usb_dma_owner = ep->index;
 
-	n329_udc_write(n329_udc_read(REG_USBD_DMA_CTRL_STS) | 0x00000020, 
+	n329_udc_write(n329_udc_read(REG_USBD_DMA_CTRL_STS) | 0x00000020,
 					REG_USBD_DMA_CTRL_STS);
 
 	return ;
@@ -307,7 +422,7 @@ static int n329_udc_write_packet(struct n329_ep *ep, struct n329_request *req)
 		} else {
 			for (i=0; i<len; i++) {
 				tmp_data = *buf++;
-				__raw_writeb(tmp_data, REG_USBD_CEP_DATA_BUF);
+				n329_udc_writeb(tmp_data, REG_USBD_CEP_DATA_BUF);
 			}
 			n329_udc_write(len, REG_USBD_IN_TRNSFR_CNT);
 		}
@@ -325,7 +440,7 @@ static int n329_udc_write_packet(struct n329_ep *ep, struct n329_request *req)
 		buf = (u8*) (req->req.dma + req->req.actual);
 		if (len == 0) {
 			printk("n329_udc_write_packet send zero packet\n");
-			n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1)) & 0xF7) | 
+			n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1)) & 0xF7) |
 					EP_ZERO_IN, REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1));
 		} else {
 			len = udc_transfer(ep, buf, len, DMA_WRITE);
@@ -339,7 +454,7 @@ static int n329_udc_write_packet(struct n329_ep *ep, struct n329_request *req)
 static int n329_udc_write_fifo(struct n329_ep *ep, struct n329_request *req)
 {
 	u32 len;
-	
+
 	len = n329_udc_write_packet(ep, req);
 
 	/* return:  0 = still running, 1 = completed, negative = errno */
@@ -352,20 +467,20 @@ static int n329_udc_write_fifo(struct n329_ep *ep, struct n329_request *req)
 	return 0;
 }
 
-static int n329_udc_read_packet(struct n329_ep *ep,u8 *buf, 
+static int n329_udc_read_packet(struct n329_ep *ep,u8 *buf,
 				struct n329_request *req, u16 cnt)
 {
 	struct n329_udc *udc = &controller;
 	unsigned len, fifo_count;
 	u16 i;
-	u8 data;	
+	u8 data;
 
 	if (ep->EP_Num == 0) { //ctrl pipe don't use DMA
 		fifo_count = n329_udc_read(REG_USBD_CEP_CNT);
 		len = min(req->req.length - req->req.actual, fifo_count);
-  
+
 		for (i=0; i<len; i++) {
-			data = __raw_readb(REG_USBD_CEP_DATA_BUF);
+			data = n329_udc_readb(REG_USBD_CEP_DATA_BUF);
 			*buf++ = data&0xFF;
 		}
 		req->req.actual += len;
@@ -435,15 +550,15 @@ void n329_udc_paser_irq_stat(int irq, struct n329_udc *dev)
 	n329_udc_write(irq, REG_USBD_IRQ_STAT);
 
 	switch (irq) {
-	case USB_VBUS_STS:		
-		reg = n329_udc_read(REG_USBD_PHY_CTL);	
-		if (reg & BIT31)
+	case USB_VBUS_STS:
+		reg = n329_udc_read(REG_USBD_PHY_CTL);
+		if (reg & BIT(31))
 		{
 			usb_pc_status_ckeck = 1;
 			usb_pc_status = 0;
 			usb_eject_flag = 0;
 			g_USB_Mode_Check = 1;
-			printk("<USBD - USBD plug>\n");			
+			printk("<USBD - USBD plug>\n");
 		}
 		else
 		{
@@ -453,7 +568,7 @@ void n329_udc_paser_irq_stat(int irq, struct n329_udc *dev)
 			usb_eject_flag = 1;
 			g_USB_Mode_Check  = 0;
 			del_timer(&usbd_timer);
-			printk("<USBD - USBD Un-plug>\n");	
+			printk("<USBD - USBD Un-plug>\n");
 		}
 
 	case USB_SOF:
@@ -463,26 +578,26 @@ void n329_udc_paser_irq_stat(int irq, struct n329_udc *dev)
 		if (usb_pc_status_ckeck == 1 && usb_pc_status == 0)
 		{
 			usb_pc_status = 1;
-			printk("<USBD - CONNECT TO PC>\n");		
+			printk("<USBD - CONNECT TO PC>\n");
 		}
 		if (g_USB_Mode_Check)
 		{
 			g_USB_Mode_Check = 0;
-			mod_timer(&usbd_timer, jiffies + USBD_INTERVAL_TIME); 
+			mod_timer(&usbd_timer, jiffies + USBD_INTERVAL_TIME);
 		}
 		udc_isr_rst(dev);
 		break;
 
 	case USB_RESUME:
 		usb_eject_flag = 0;
-		n329_udc_write(USB_RST_STS | USB_SUS_REQ | USB_VBUS_STS, 
+		n329_udc_write(USB_RST_STS | USB_SUS_REQ | USB_VBUS_STS,
 					   REG_USBD_IRQ_ENB);
 		break;
 
 	case USB_SUS_REQ:
 		if (dev != NULL) {
 			usb_eject_flag = 1;
-			n329_udc_write(USB_RST_STS | USB_RESUME| USB_VBUS_STS, 
+			n329_udc_write(USB_RST_STS | USB_RESUME| USB_VBUS_STS,
 						   REG_USBD_IRQ_ENB);
 		}
 		break;
@@ -619,7 +734,7 @@ void n329_udc_paser_irq_nep(int irq, struct n329_ep *ep, u32 IrqSt)
 		req = 0;
 	} else {
 		n329_udc_write(n329_udc_read(REG_USBD_EPA_IRQ_STAT + 0x28 * (ep->index - 1)),
-			     REG_USBD_EPA_IRQ_STAT + 0x28 * (ep->index - 1));
+				 REG_USBD_EPA_IRQ_STAT + 0x28 * (ep->index - 1));
 		req = list_entry(ep->queue.next, struct n329_request, queue);
 	}
 
@@ -671,21 +786,21 @@ void n329_udc_paser_irq_nep(int irq, struct n329_ep *ep, u32 IrqSt)
 				n329_udc_write(dev->irq_enbl, REG_USBD_IRQ_ENB_L);
 			}
 
-			fifo_count = n329_udc_read(REG_USBD_EPA_DATA_CNT + 0x28*(ep->index-1));
+			fifo_count = n329_udc_read(REG_USBD_EPA_DATA_CNT + 0x28 * (ep->index - 1));
 
 			buf = req->req.buf + req->req.actual;
 
 			for (i=0; i<fifo_count; i++) {
-				data = __raw_readb(REG_USBD_EPA_DATA_BUF + 0x28*(ep->index-1));                             
-				*buf++ = data&0xFF;
+				data = n329_udc_readb(REG_USBD_EPA_DATA_BUF + 0x28 * (ep->index - 1));
+				*buf++ = data & 0xFF;
 			}
 			if (ep->buffer_disabled) {
 				/* Enable buffer */
-				n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC + 0x28 * (ep->index-1))) & 0x77,
-					     REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1));
+				n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1))) & 0x77,
+						 REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1));
 				/* Disable buffer when short packet */
-				n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC+0x28*(ep->index-1)) & 0xF7) | 0x80,
-					      REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1));
+				n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1)) & 0xF7) | 0x80,
+						  REG_USBD_EPA_RSP_SC + 0x28 * (ep->index - 1));
 			}
 
 			req->req.actual += fifo_count;
@@ -773,7 +888,7 @@ static irqreturn_t n329_udc_irq(int irq, void *_dev)
 	u32 volatile IrqStL, IrqEnL;
 	u32 volatile  IrqSt, IrqEn;
 	int i = 0, j;
-	
+
 	dev = (struct n329_udc *)(_dev);
 	g_usbd_access++;
 	IrqStL = n329_udc_read(REG_USBD_IRQ_STAT_L);
@@ -844,7 +959,7 @@ static irqreturn_t n329_udc_irq(int irq, void *_dev)
 							/* Should we clear out token/RxED intr */
 							if ((1 << i) == EP_BO_SHORT_PKT)
 								IrqSt &= 0x1FCF;
-							if ((ep->EP_Type == EP_TYPE_BLK) || 
+							if ((ep->EP_Type == EP_TYPE_BLK) ||
 								(ep->EP_Type == EP_TYPE_ISO))
 								n329_udc_paser_irq_nep(1<<i, ep, IrqSt);
 							else if (ep->EP_Type == EP_TYPE_INT)
@@ -905,7 +1020,7 @@ static s32 n329_udc_get_sram_base(struct n329_udc *dev, u32 max)
 	return -ENOBUFS;
 }
 
-static int n329_ep_enable(struct usb_ep *_ep, 
+static int n329_udc_ep_enable(struct usb_ep *_ep,
 				const struct usb_endpoint_descriptor *desc)
 {
 	struct n329_ep *ep;
@@ -942,10 +1057,10 @@ static int n329_ep_enable(struct usb_ep *_ep,
 		if (sram_addr < 0)
 			return sram_addr;
 
-		n329_udc_write(sram_addr, REG_USBD_EPA_START_ADDR + 
+		n329_udc_write(sram_addr, REG_USBD_EPA_START_ADDR +
 							0x28 * (ep->index - 1));
 		sram_addr = sram_addr + max;
-		n329_udc_write(sram_addr-1, REG_USBD_EPA_END_ADDR + 
+		n329_udc_write(sram_addr-1, REG_USBD_EPA_END_ADDR +
 							0x28 * (ep->index - 1));
 	}
 
@@ -969,13 +1084,13 @@ static int n329_ep_enable(struct usb_ep *_ep,
 		n329_udc_write(0x9, REG_USBD_EPA_RSP_SC+0x28*(ep->index-1));
 
 		n329_udc_write(ep->EP_Num<<4|ep->EP_Dir<<3|ep->EP_Type<<1|1,
-			     REG_USBD_EPA_CFG+0x28*(ep->index-1));
+				 REG_USBD_EPA_CFG+0x28*(ep->index-1));
 		n329_udc_write(ep->EP_Mode, REG_USBD_EPA_RSP_SC+0x28*(ep->index-1));
 
 		/* Enable irqs */
 		int_en_reg = n329_udc_read(REG_USBD_IRQ_ENB_L);
 		n329_udc_write(int_en_reg | (1 << (ep->index + 1)),
-			     REG_USBD_IRQ_ENB_L);
+				 REG_USBD_IRQ_ENB_L);
 		dev->irq_enbl = n329_udc_read(REG_USBD_IRQ_ENB_L);
 
 		if (ep->EP_Type == EP_TYPE_BLK) {
@@ -985,7 +1100,7 @@ static int n329_ep_enable(struct usb_ep *_ep,
 				ep->irq_enb = 0x10; //0x1020;
 				/* Disable buffer when short packet */
 				n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC+0x28*(ep->index-1))&0xF7)|0x80,
-					     REG_USBD_EPA_RSP_SC + 0x28*(ep->index-1));
+						 REG_USBD_EPA_RSP_SC + 0x28*(ep->index-1));
 				ep->buffer_disabled = 1;
 			}
 		} else if (ep->EP_Type == EP_TYPE_INT)
@@ -1008,7 +1123,7 @@ static int n329_ep_enable(struct usb_ep *_ep,
 	return 0;
 }
 
-static int n329_ep_disable(struct usb_ep *_ep)
+static int n329_udc_ep_disable(struct usb_ep *_ep)
 {
 	struct n329_ep *ep = container_of(_ep, struct n329_ep, ep);
 	unsigned long	flags;
@@ -1036,7 +1151,7 @@ static int n329_ep_disable(struct usb_ep *_ep)
 	return 0;
 }
 
-static struct usb_request *n329_alloc_request(struct usb_ep *_ep,
+static struct usb_request *n329_udc_alloc_request(struct usb_ep *_ep,
 				gfp_t mem_flags)
 {
 	struct n329_ep *ep;
@@ -1049,20 +1164,19 @@ static struct usb_request *n329_alloc_request(struct usb_ep *_ep,
 	req = kmalloc (sizeof *req, mem_flags);
 	if (!req)
 		return 0;
+
 	memset (req, 0, sizeof *req);
 	INIT_LIST_HEAD (&req->queue);
 	req->req.dma = DMA_ADDR_INVALID;
 
-	//printk("req=0x%x, buf0x%x\n", (int)req, (int)req->req.buf);
 	return &req->req;
 }
 
-static void n329_free_request(struct usb_ep *_ep, struct usb_request *_req)
+static void n329_udc_free_request(struct usb_ep *_ep, 
+				struct usb_request *_req)
 {
 	struct n329_ep	*ep;
 	struct n329_request	*req;
-
-	//printk("n329_free_request(ep=%p,req=%p)\n", _ep, _req);
 
 	ep = container_of (_ep, struct n329_ep, ep);
 	if (!ep || !_req || (!ep->desc && _ep->name != ep0name))
@@ -1077,8 +1191,8 @@ static void n329_free_request(struct usb_ep *_ep, struct usb_request *_req)
 }
 
 
-static int n329_queue(struct usb_ep *_ep, struct usb_request *_req, 
-				gfp_t gfp_flags)
+static int n329_udc_enqueue(struct usb_ep *_ep, 
+				struct usb_request *_req, gfp_t gfp_flags)
 {
 	struct n329_request	*req;
 	struct n329_ep	*ep;
@@ -1092,9 +1206,9 @@ static int n329_queue(struct usb_ep *_ep, struct usb_request *_req,
 	if (unlikely (!_req || !_req->complete || !_req->buf
 			|| !list_empty(&req->queue))) {
 		if (!_req) {
-			printk("n329_queue: 1 X X X\n");
+			printk("n329_udc_enqueue: 1 X X X\n");
 		} else {
-			printk("n329_queue: 0 %01d %01d %01d\n",!_req->complete,!_req->buf, !list_empty(&req->queue));
+			printk("n329_udc_enqueue: 0 %01d %01d %01d\n",!_req->complete,!_req->buf, !list_empty(&req->queue));
 		}
 		local_irq_restore(flags);
 		return -EINVAL;
@@ -1102,7 +1216,7 @@ static int n329_queue(struct usb_ep *_ep, struct usb_request *_req,
 
 	ep = container_of(_ep, struct n329_ep, ep);
 	if (unlikely (!_ep || (!ep->desc && ep->ep.name != ep0name))) {
-		printk("n329_queue: inval 2\n");
+		printk("n329_udc_enqueue: inval 2\n");
 		local_irq_restore(flags);
 		return -EINVAL;
 	}
@@ -1111,7 +1225,7 @@ static int n329_queue(struct usb_ep *_ep, struct usb_request *_req,
 	if (unlikely (!dev->driver
 			|| dev->gadget.speed == USB_SPEED_UNKNOWN)) {
 		local_irq_restore(flags);
-		printk("n329_queue: speed =%d\n",dev->gadget.speed);
+		printk("n329_udc_enqueue: speed =%d\n",dev->gadget.speed);
 		return -ESHUTDOWN;
 	}
 
@@ -1159,7 +1273,7 @@ static int n329_queue(struct usb_ep *_ep, struct usb_request *_req,
 	return 0;
 }
 
-static int n329_dequeue(struct usb_ep *_ep, struct usb_request *_req)
+static int n329_udc_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct n329_ep	*ep;
 	struct n329_udc	*udc = &controller;
@@ -1167,7 +1281,7 @@ static int n329_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	unsigned long		flags;
 	struct n329_request	*req;
 
-	printk("n329_dequeue(ep=%p,req=%p)\n", _ep, _req);
+	printk("n329_udc_dequeue(ep=%p,req=%p)\n", _ep, _req);
 
 	if (!udc->driver)
 		return -ESHUTDOWN;
@@ -1207,14 +1321,14 @@ static int n329_set_halt (struct usb_ep *_ep, int value)
 }
 
 static const struct usb_ep_ops n329_ep_ops = {
-	.enable = n329_ep_enable,
-	.disable = n329_ep_disable,
+	.enable = n329_udc_ep_enable,
+	.disable = n329_udc_ep_disable,
 
-	.alloc_request = n329_alloc_request,
-	.free_request = n329_free_request,
+	.alloc_request = n329_udc_alloc_request,
+	.free_request = n329_udc_free_request,
 
-	.queue = n329_queue,
-	.dequeue = n329_dequeue,
+	.queue = n329_udc_enqueue,
+	.dequeue = n329_udc_dequeue,
 
 	.set_halt = n329_set_halt,
 };
@@ -1252,6 +1366,7 @@ static void n329_nop_release(struct device *dev)
 	/* Do nothing */
 }
 
+#if 0
 int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 {
 	struct n329_udc *udc = &controller;
@@ -1295,8 +1410,8 @@ int usb_gadget_register_driver(struct usb_gadget_driver *driver)
 #endif
 
 	mdelay(300);
-	
-      /* ????? */    n329_udc_write(0x320, REG_USBD_PHY_CTL);//power on usb D+ high
+
+	  /* ????? */    n329_udc_write(0x320, REG_USBD_PHY_CTL);//power on usb D+ high
 	return 0;
 }
 
@@ -1311,7 +1426,7 @@ int usb_gadget_unregister_driver (struct usb_gadget_driver *driver)
 		return -EINVAL;
 
 	printk("usb_gadget_unregister_driver() '%s'\n",
-	       driver->driver.name);
+		   driver->driver.name);
 
 	printk("call driver->unbind\n");
 	driver->unbind (&udc->gadget);
@@ -1322,14 +1437,15 @@ int usb_gadget_unregister_driver (struct usb_gadget_driver *driver)
 	device_release_driver (&udc->gadget.dev);
 	driver_unregister (&driver->driver);
 #endif
-    /* ????? */
-    /* Power off usb D+ high */
-    n329_udc_write(n329_udc_read(REG_USBD_PHY_CTL) & ~0x100, 
-    				REG_USBD_PHY_CTL);
+	/* ????? */
+	/* Power off usb D+ high */
+	n329_udc_write(n329_udc_read(REG_USBD_PHY_CTL) & ~0x100,
+					REG_USBD_PHY_CTL);
 
 
 	return 0;
 }
+#endif
 
 static void udc_isr_rst(struct n329_udc	*dev)
 {
@@ -1350,7 +1466,7 @@ static void udc_isr_rst(struct n329_udc	*dev)
 	dev->usb_less_mps = 0;
 
 	printk("speed:%x\n", n329_udc_read(REG_USBD_OPER));
-	
+
 	if (n329_udc_read(REG_USBD_OPER) == 2)
 		dev->gadget.speed = USB_SPEED_FULL;
 	else
@@ -1358,7 +1474,7 @@ static void udc_isr_rst(struct n329_udc	*dev)
 
 	/* Flush fifo */
 	n329_udc_write(n329_udc_read(REG_USBD_CEP_CTRL_STAT)|CEP_FLUSH,
-		     REG_USBD_CEP_CTRL_STAT);
+			 REG_USBD_CEP_CTRL_STAT);
 	for (i = 1; i < N329_ENDPOINTS; i++) {
 		n329_udc_write(0x09, REG_USBD_EPA_RSP_SC + 0x28 * (i - 1));
 	}
@@ -1403,7 +1519,7 @@ static void udc_isr_dma(struct n329_udc *dev)
 		if (ep->EP_Type == EP_TYPE_BLK) {
 			if (dev->usb_less_mps == 1) {
 				n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC+0x28*(ep->index-1))&0xF7)|0x40,
-					     REG_USBD_EPA_RSP_SC+0x28*(ep->index-1)); // packet end
+						 REG_USBD_EPA_RSP_SC+0x28*(ep->index-1)); // packet end
 				dev->usb_less_mps = 0;
 			}
 		} else if (ep->EP_Type == EP_TYPE_INT) {
@@ -1417,9 +1533,9 @@ static void udc_isr_dma(struct n329_udc *dev)
 					dev->usb_dma_cnt < ep->ep.maxpacket) {
 				if (ep->buffer_disabled) {
 					n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC + 0x28*(ep->index-1)))&0x77,
-						     REG_USBD_EPA_RSP_SC + 0x28*(ep->index-1));//enable buffer
+							 REG_USBD_EPA_RSP_SC + 0x28*(ep->index-1));//enable buffer
 					n329_udc_write((n329_udc_read(REG_USBD_EPA_RSP_SC+0x28*(ep->index-1))&0xF7)|0x80,
-						     REG_USBD_EPA_RSP_SC+0x28*(ep->index-1));//disable buffer when short packet
+							 REG_USBD_EPA_RSP_SC+0x28*(ep->index-1));//disable buffer when short packet
 				}
 			}
 
@@ -1451,7 +1567,6 @@ static void udc_isr_dma(struct n329_udc *dev)
 	}
 }
 
-
 static void udc_isr_ctrl_pkt(struct n329_udc *dev)
 {
 	u32	temp;
@@ -1470,11 +1585,11 @@ static void udc_isr_ctrl_pkt(struct n329_udc *dev)
 
 	temp = n329_udc_read(REG_USBD_SETUP1_0);
 
-	pcrq.bRequest = (u8) ((temp >> 8) & 0xff);
-	pcrq.bRequestType = (u8) (temp & 0xff);
-	pcrq.wValue = (u16) n329_udc_read(REG_USBD_SETUP3_2);
-	pcrq.wIndex = (u16) n329_udc_read(REG_USBD_SETUP5_4);
-	pcrq.wLength = (u16) n329_udc_read(REG_USBD_SETUP7_6);
+	crq.bRequest = (u8) ((temp >> 8) & 0xff);
+	crq.bRequestType = (u8) (temp & 0xff);
+	crq.wValue = (u16) n329_udc_read(REG_USBD_SETUP3_2);
+	crq.wIndex = (u16) n329_udc_read(REG_USBD_SETUP5_4);
+	crq.wLength = (u16) n329_udc_read(REG_USBD_SETUP7_6);
 
 	dev->crq = crq;
 
@@ -1654,32 +1769,6 @@ void udc_isr_update_dev(struct n329_udc *dev)
 }
 
 
-static void USB_Init(struct n329_udc *dev)
-{
-	int	j;
-
-	dev->usb_devstate=0;
-	dev->usb_address = 0;
-
-	/*
-	 * configure USB controller
-	 */
-	n329_udc_write(0x03, REG_USBD_IRQ_ENB_L);	/* enable usb, cep interrupt */
-	n329_udc_write((USB_RESUME | USB_RST_STS| USB_VBUS_STS), REG_USBD_IRQ_ENB);
-
-	n329_udc_write(USB_HS, REG_USBD_OPER);//USB 2.0
-
-	n329_udc_write(0, REG_USBD_ADDR);
-	n329_udc_write((CEP_SUPPKT | CEP_STS_END), REG_USBD_CEP_IRQ_ENB);
-
-	for (j = 0; j < N329_ENDPOINTS; j++) {
-		dev->ep[j].EP_Num = 0xff;
-		dev->ep[j].EP_Dir = 0xff;
-		dev->ep[j].EP_Type = 0xff;
-
-	}
-
-}
 
 static u32 udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 {
@@ -1698,7 +1787,7 @@ static u32 udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 
 
 			n329_udc_write((n329_udc_read(REG_USBD_DMA_CTRL_STS)&0xe0) | 0x10 | ep->EP_Num,
-				     REG_USBD_DMA_CTRL_STS);// bulk in, write
+					 REG_USBD_DMA_CTRL_STS);// bulk in, write
 
 			n329_udc_write(0, REG_USBD_EPA_IRQ_ENB + (0x28* (ep->index-1)));
 
@@ -1732,10 +1821,10 @@ static u32 udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 		n329_udc_write(0x03, REG_USBD_IRQ_ENB_L);
 
 		n329_udc_write((n329_udc_read(REG_USBD_DMA_CTRL_STS) & 0xe0)|ep->EP_Num,
-			     REG_USBD_DMA_CTRL_STS);	//read
+				 REG_USBD_DMA_CTRL_STS);	//read
 		n329_udc_write(0x1000,  REG_USBD_EPA_IRQ_ENB + (0x28* (ep->index-1)));
 		n329_udc_write(n329_udc_read( REG_USBD_IRQ_ENB_L)|(ep->index<<2),
-			     REG_USBD_IRQ_ENB_L);
+				 REG_USBD_IRQ_ENB_L);
 
 		if (loop > 0) {
 			loop--;
@@ -1762,7 +1851,50 @@ static u32 udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 	return len;
 }
 
+static void timer_check_usbd_access(unsigned long dummy)
+{
+	if (g_usbd_access == 0)
+	{
+		printk("<USBD - Ejected by Host/No Transfer from Host>\n");
+		usb_eject_flag = 1;
+		g_usbd_access = 0;
+	}
+	else
+	{
+		g_usbd_access = 0;
+		mod_timer(&usbd_timer, jiffies + USBD_INTERVAL_TIME);
+	}
+	return;
+}
 
+#if 0
+
+static void USB_Init(struct n329_udc *dev)
+{
+	int	j;
+
+	dev->usb_devstate=0;
+	dev->usb_address = 0;
+
+	/*
+	 * configure USB controller
+	 */
+	n329_udc_write(0x03, REG_USBD_IRQ_ENB_L);	/* enable usb, cep interrupt */
+	n329_udc_write((USB_RESUME | USB_RST_STS| USB_VBUS_STS), REG_USBD_IRQ_ENB);
+
+	n329_udc_write(USB_HS, REG_USBD_OPER);//USB 2.0
+
+	n329_udc_write(0, REG_USBD_ADDR);
+	n329_udc_write((CEP_SUPPKT | CEP_STS_END), REG_USBD_CEP_IRQ_ENB);
+
+	for (j = 0; j < N329_ENDPOINTS; j++) {
+		dev->ep[j].EP_Num = 0xff;
+		dev->ep[j].EP_Dir = 0xff;
+		dev->ep[j].EP_Type = 0xff;
+
+	}
+
+}
 
 /*
  *	probe - binds to the platform device
@@ -1779,7 +1911,7 @@ static int /*__init*/ n329_udc_probe(struct platform_device *pdev)
 	udc->gadget.dev.parent = &pdev->dev;
 	udc->gadget.dev.dma_mask = pdev->dev.dma_mask;
 
-       udc->clk = clk_get(&pdev->dev, NULL);
+	   udc->clk = clk_get(&pdev->dev, NULL);
 	if (IS_ERR(udc->clk)) {
 		dev_err(dev, "failed to get udc clock\n");
 		error = PTR_ERR(udc->clk);
@@ -1843,7 +1975,7 @@ static int /*__init*/ n329_udc_probe(struct platform_device *pdev)
 	for (i = 0; i < N329_ENDPOINTS; i++) {
 		struct n329_ep *ep = &udc->ep[i];
 
-	      //  printk("ep %d\n", i);
+		  //  printk("ep %d\n", i);
 		if (!ep_name[i])
 			break;
 		ep->index = i;
@@ -1880,13 +2012,13 @@ static int /*__init*/ n329_udc_probe(struct platform_device *pdev)
 		goto fail2;
 	}
 	error = request_irq(udc->irq, n329_udc_irq,
-			    IRQF_DISABLED, gadget_name, udc);
+				IRQF_DISABLED, gadget_name, udc);
 	if (error != 0) {
 		dev_err(dev, "request_irq() failed\n");
 		goto fail2;
 	}
-	init_timer(&usbd_timer);
 
+	init_timer(&usbd_timer);
 	usbd_timer.function = timer_check_usbd_access;	/* timer handler */
 
 	error = device_add(&udc->gadget.dev);
@@ -1917,9 +2049,9 @@ static int __exit n329_udc_remove(struct platform_device *pdev)
 	platform_set_drvdata (pdev, NULL);
 	device_unregister (&udc->gadget.dev);
 
-      //n329_udc_write(n329_udc_read(REG_USBD_PHY_CTL) & ~0x200,
-      //             REG_USBD_PHY_CTL);    // phy suspend
-      n329_udc_write(0x20, REG_USBD_PHY_CTL);    // phy suspend
+	  //n329_udc_write(n329_udc_read(REG_USBD_PHY_CTL) & ~0x200,
+	  //             REG_USBD_PHY_CTL);    // phy suspend
+	  n329_udc_write(0x20, REG_USBD_PHY_CTL);    // phy suspend
 	clk_disable(udc->clk);
 
 	return 0;
@@ -1965,23 +2097,7 @@ static void __exit udc_exit(void)
 	platform_driver_unregister (&udc_driver);
 }
 
-static void timer_check_usbd_access(unsigned long dummy)
-{	
-	if (g_usbd_access == 0)
-	{
-		printk("<USBD - Ejected by Host/No Transfer from Host>\n");	
-		usb_eject_flag = 1;
-		g_usbd_access = 0;
-	}
-	else
-	{
-		g_usbd_access = 0;
-		mod_timer(&usbd_timer, jiffies + USBD_INTERVAL_TIME); 
-	}
-	return;
-}
-
-
+#endif
 
 
 
