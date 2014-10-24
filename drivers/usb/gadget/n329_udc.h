@@ -48,20 +48,21 @@ struct n329_request {
 };
 
 struct n329_udc {
-	spinlock_t lock;
-	
-	struct n329_ep ep[N329_ENDPOINTS];
 	struct usb_gadget gadget;
 	struct usb_gadget_driver *driver;
+	struct n329_ep ep[N329_ENDPOINTS];
 	struct platform_device *pdev;
 	
-	struct clk *clk;
+	struct clk *usb20_clk;
+	struct clk *usb20_hclk;
 	struct resource *res;
 	void __iomem *reg;
 	int irq;
 	
 	enum ep0_state ep0state;
 	
+	spinlock_t lock;
+
 	u8 usb_devstate;
 	u8 usb_address;
 
