@@ -318,6 +318,83 @@ found:
 }
 EXPORT_SYMBOL(n329_clocks_config_usb);
 
+unsigned long n329_clocks_config_usb20(unsigned long rate)
+{
+	unsigned long apll_rate, upll_rate, xin_rate, pll_div, clk_div;
+	unsigned long best_rate, best_pll_div, best_clk_div, best_src;
+	unsigned long test_rate, test_pll_div, test_clk_div;
+
+	apll_rate = clk_get_rate(clks[apll_clk]);
+	upll_rate = clk_get_rate(clks[upll_clk]);
+	xin_rate = clk_get_rate(clks[xtal_clk]);
+	pll_div = (1 << 3);
+	clk_div = (1 << 4);
+
+	best_rate = 0xffffffff;
+	best_pll_div = 0;
+	best_clk_div = 0;
+	best_src = 0;
+
+	/* Test best rate for the xin input */
+	for (test_clk_div = 0; test_clk_div < clk_div; ++test_clk_div) {
+		test_rate = xin_rate / (test_clk_div + 1);
+		if ((ABS_DELTA(rate, test_rate) < ABS_DELTA(rate, best_rate))) {
+			best_rate = test_rate;
+			best_src = 0;
+			best_pll_div = 0;
+			best_clk_div = test_clk_div;
+		}
+	}
+
+	if (rate == best_rate)
+		goto found;
+
+	/* Test best rate for upll input */
+	for (test_pll_div = 0; test_pll_div < pll_div; ++test_pll_div) {
+		for (test_clk_div = 0; test_clk_div < clk_div; ++test_clk_div) {
+			test_rate = (upll_rate / (test_pll_div + 1)) / (test_clk_div + 1);
+			if ((ABS_DELTA(rate, test_rate) < ABS_DELTA(rate, best_rate))) {
+				best_rate = test_rate;
+				best_src = 3;
+				best_pll_div = test_pll_div;
+				best_clk_div = test_clk_div;
+			}
+		}
+	}
+
+	if (rate == best_rate)
+		goto found;
+
+	/* Test best rate for apll input */
+	for (test_pll_div = 0; test_pll_div < pll_div; ++test_pll_div) {
+		for (test_clk_div = 0; test_clk_div < clk_div; ++test_clk_div) {
+			test_rate = (apll_rate / (test_pll_div + 1)) / (test_clk_div + 1);
+			if ((ABS_DELTA(rate, test_rate) < ABS_DELTA(rate, best_rate))) {
+				best_rate = test_rate;
+				best_src = 2;
+				best_pll_div = test_pll_div;
+				best_clk_div = test_clk_div;
+			}
+		}
+	}
+
+found:
+
+	if (best_src == 3) {
+		clk_set_parent(clks[usb20_uclk], clks[udiv0_clk + best_pll_div]);
+		clk_set_parent(clks[usb20_src], clks[usb20_uclk]);
+	} else if (best_src == 2) {
+		clk_set_parent(clks[usb20_aclk], clks[adiv0_clk + best_pll_div]);
+		clk_set_parent(clks[usb20_src], clks[usb20_aclk]);
+	} else {
+		clk_set_parent(clks[usb20_src], clks[xtal_clk]);
+	}
+	clk_set_rate(clks[usb20_div], best_rate);
+
+	return clk_get_rate(clks[usb20_div]);
+}
+EXPORT_SYMBOL(n329_clocks_config_usb20);
+
 static void __init n329_clocks_init(struct device_node *np)
 {
 	int xtal;
