@@ -36,8 +36,19 @@
 /* USB Device Control Registers */
 #define REG_USBD_IRQ_STAT_L		(USBD_BASE + 0x00)	/* Interrupt status low register */
 #define REG_USBD_IRQ_ENB_L		(USBD_BASE + 0x08)	/* Interrupt enable low register */
+	#define	IRQ_USB_STAT		BIT(0)
+	#define IRQ_CEP				BIT(1)
+	#define IRQ_NCEP			BITS(7,2)
 #define REG_USBD_IRQ_STAT		(USBD_BASE + 0x10)	/* USB interrupt status register */
 #define REG_USBD_IRQ_ENB		(USBD_BASE + 0x14)	/* USB interrupt enable register */
+	#define USB_SOF				BIT(0)
+	#define USB_RST_STS			BIT(1)
+	#define	USB_RESUME			BIT(2)
+	#define	USB_SUS_REQ			BIT(3)
+	#define	USB_HS_SETTLE	    BIT(4)
+	#define	USB_DMA_REQ			BIT(5)
+	#define USABLE_CLK			BIT(6)
+	#define USB_VBUS_STS		BIT(8)
 #define REG_USBD_OPER			(USBD_BASE + 0x18)	/* USB operation register */
 #define REG_USBD_FRAME_CNT		(USBD_BASE + 0x1c)	/* USB frame count register */
 #define REG_USBD_ADDR			(USBD_BASE + 0x20)	/* USB address register */
@@ -126,16 +137,9 @@
 #define REG_USBD_AHB_DMA_ADDR	(USBD_BASE + 0x700)	/* AHB_DMA address register */
 /* Phy */
 #define REG_USBD_PHY_CTL    	(USBD_BASE + 0x704)    /* USB PHY control register */
-	#define BISTEN		BIT(0)
-	#define BISTERR		BIT(1)
-	#define SIDDQ		BIT(2)
-	#define XO_ON		BIT(3)
-	#define CLK_SEL		BITS(5,4)
-	#define REFCLK		BIT(6)
-	#define CLK48		BIT(7)
-	#define VBUS_DETECT	BIT(8)
-	#define PHY_SUSPEND	BIT(9)
-	#define VBUS_STATUS	BIT(31)
+	#define PHY_VBUS_DETECT		BIT(8)
+	#define PHY_SUSPEND			BIT(9)
+	#define PHY_VBUS_STATUS		BIT(31)
 
 #define USBD_DMA_LEN			0x10000
 #define USB_HIGHSPEED			2
@@ -159,20 +163,6 @@
 #define USBR_SET_INTERFACE		0x0B
 #define USBR_SYNCH_FRAME		0x0C
 
-/* Bit Definitions of IRQ_ENB/STAT register */
-#define	IRQ_USB_STAT			0x01
-#define IRQ_CEP					0x02
-#define IRQ_NCEP				0xfc
-
-/* Definition of Bits in USB_IRQ_STS register */
-#define USB_SOF					0x01
-#define USB_RST_STS				0x02
-#define	USB_RESUME				0x04
-#define	USB_SUS_REQ				0x08
-#define	USB_HS_SETTLE	        0x10
-#define	USB_DMA_REQ				0x20
-#define USABLE_CLK				0x40
-#define USB_VBUS_STS			0x100
 
 /* Definition of Bits in USB_OPER register */
 #define USB_GEN_RES             0x1
@@ -249,9 +239,8 @@ static u32 volatile g_USB_Mode_Check = 0;
 static int volatile g_usbd_access = 0;
 static int volatile usb_eject_flag = 0;
 
-static const char gadget_name [] = "w55fa93-udc";
-static const char driver_desc [] = DRIVER_DESC;
-static const char ep0name [] = "ep0";
+static const char gadget_name[] = "n329-udc";
+static const char ep0name[] = "ep0";
 
 static const char *const ep_name[] = {
 	ep0name,                                /* everyone has ep0 */
@@ -263,10 +252,6 @@ static const char *const ep_name[] = {
 
 static struct n329_udc controller;
 
-static void n329_udc_isr_rst(struct n329_udc *dev);
-static void n329_udc_isr_dma(struct n329_udc *dev);
-static void n329_udc_isr_ctrl_pkt(struct n329_udc *dev);
-static void n329_udc_isr_update_dev(struct n329_udc *dev);
 static u32 n329_udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode);
 
 static void __iomem *udc_base;
@@ -860,15 +845,13 @@ static void n329_udc_isr_update_dev(struct n329_udc *dev)
 
 void n329_udc_paser_irq_stat(int irq, struct n329_udc *dev)
 {
-	u32 volatile reg;
-
 	/* Clear the IRQ bit */
 	n329_udc_writel(irq, REG_USBD_IRQ_STAT);
 
 	switch (irq) {
 	case USB_VBUS_STS:
-		reg = n329_udc_readl(REG_USBD_PHY_CTL);
-		if (reg & BIT(31))
+		/* Check the VBUS status */		
+		if (n329_udc_readl(REG_USBD_PHY_CTL) & PHY_VBUS_STATUS)
 		{
 			usb_pc_status_ckeck = 1;
 			usb_pc_status = 0;
@@ -1342,7 +1325,7 @@ static int n329_udc_ep_enable(struct usb_ep *_ep,
 	struct n329_ep *ep;
 	struct n329_udc *dev;
 	unsigned long flags;
-	u32 max, tmp, int_en_reg;
+	u32 max, tmp;
 	s32 sram_addr;
 
 	ep = container_of(_ep, struct n329_ep, ep);
@@ -1403,10 +1386,9 @@ static int n329_udc_ep_enable(struct usb_ep *_ep,
 				 REG_USBD_EPA_CFG+0x28*(ep->index-1));
 		n329_udc_writel(ep->EP_Mode, REG_USBD_EPA_RSP_SC+0x28*(ep->index-1));
 
-		/* Enable irqs */
-		int_en_reg = n329_udc_readl(REG_USBD_IRQ_ENB_L);
-		n329_udc_writel(int_en_reg | (1 << (ep->index + 1)),
-				 REG_USBD_IRQ_ENB_L);
+		/* Enable endpoint IRQ */
+		n329_udc_writel(n329_udc_readl(REG_USBD_IRQ_ENB_L) | 
+							(1 << (ep->index + 1)), REG_USBD_IRQ_ENB_L);
 		dev->irq_enbl = n329_udc_readl(REG_USBD_IRQ_ENB_L);
 
 		if (ep->EP_Type == EP_TYPE_BLK) {
@@ -1506,20 +1488,26 @@ static void n329_udc_free_request(struct usb_ep *_ep,
 	kfree (req);
 }
 
-
 static int n329_udc_enqueue(struct usb_ep *_ep,
 				struct usb_request *_req, gfp_t gfp_flags)
 {
 	struct n329_ep *ep;
-	struct n329_udc	*dev;
+	struct n329_udc	*udc;
 	struct n329_request	*req;
 	unsigned long flags;
+
+	if (!_ep || !_req)
+		return -EINVAL;
+
+	ep = container_of(_ep, struct n329_ep, ep);
+	udc = container_of(ep->gadget, struct n329_udc, gadget);
+
+	dev_info(&udc->pdev->dev, "%s:\n", __func__);
 
 	local_irq_save(flags);
 
 	req = container_of(_req, struct n329_request, req);
-
-	if (unlikely (!_req || !_req->complete || !_req->buf
+	if (unlikely(!_req || !_req->complete || !_req->buf
 			|| !list_empty(&req->queue))) {
 		if (!_req) {
 			printk("n329_udc_enqueue: 1 X X X\n");
@@ -1530,18 +1518,15 @@ static int n329_udc_enqueue(struct usb_ep *_ep,
 		return -EINVAL;
 	}
 
-	ep = container_of(_ep, struct n329_ep, ep);
-	if (unlikely (!_ep || (!ep->desc && ep->ep.name != ep0name))) {
+	if (unlikely(!_ep || (!ep->desc && ep->ep.name != ep0name))) {
 		printk("n329_udc_enqueue: inval 2\n");
 		local_irq_restore(flags);
 		return -EINVAL;
 	}
 
-	dev = ep->dev;
-	if (unlikely (!dev->driver
-			|| dev->gadget.speed == USB_SPEED_UNKNOWN)) {
+	if (unlikely(!udc->driver || udc->gadget.speed == USB_SPEED_UNKNOWN)) {
 		local_irq_restore(flags);
-		printk("n329_udc_enqueue: speed =%d\n",dev->gadget.speed);
+		printk("n329_udc_enqueue: speed =%d\n",udc->gadget.speed);
 		return -ESHUTDOWN;
 	}
 
@@ -1560,14 +1545,13 @@ static int n329_udc_enqueue(struct usb_ep *_ep,
 	_req->actual = 0;
 
 	/* pio or dma irq handler advances the queue. */
-	if (likely (req != 0)) {
+	if (likely(req != 0))
 		list_add_tail(&req->queue, &ep->queue);
-	}
 
 	if (ep->index==0) {
 		/* Delayed status */
-		if (dev->setup_ret > 1000||
-				((req->req.length==0)&&(dev->ep0state == EP0_OUT_DATA_PHASE))) {
+		if (udc->setup_ret > 1000||
+				((req->req.length == 0) && (udc->ep0state == EP0_OUT_DATA_PHASE))) {
 			printk("delayed status done\n");
 			/* Clear nak so that sts stage is complete */
 			n329_udc_writel(CEP_NAK_CLEAR, REG_USBD_CEP_CTRL_STAT);
@@ -1578,12 +1562,11 @@ static int n329_udc_enqueue(struct usb_ep *_ep,
 	} else if (ep->index > 0) {
 		if (ep->EP_Dir) {
 			/* In */
-			if (!dev->usb_dma_trigger || (ep->index!=dev->usb_dma_owner)) {
+			if (!udc->usb_dma_trigger || (ep->index != udc->usb_dma_owner))
 				n329_udc_writel(ep->irq_enb, REG_USBD_EPA_IRQ_ENB + 0x28 * (ep->index-1));
-			}
 		} else {
 			/* Out */
-			if (!dev->usb_dma_trigger || (ep->index!=dev->usb_dma_owner))
+			if (!udc->usb_dma_trigger || (ep->index != udc->usb_dma_owner))
 				n329_udc_writel(ep->irq_enb, REG_USBD_EPA_IRQ_ENB + 0x28 * (ep->index-1));
 		}
 	}
@@ -1595,22 +1578,26 @@ static int n329_udc_enqueue(struct usb_ep *_ep,
 
 static int n329_udc_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
+	struct n329_udc	*udc;
 	struct n329_ep	*ep;
-	struct n329_udc	*udc = &controller;
 	struct n329_request	*req;
-	int retval = -EINVAL;
 	unsigned long flags;
+	int retval;
+
+	if (!_ep || !_req)
+		return -EINVAL;
+
+	ep = container_of(_ep, struct n329_ep, ep);
+	udc = container_of(ep->gadget, struct n329_udc, gadget);
+
+	dev_info(&udc->pdev->dev, "%s:\n", __func__);
 
 	printk("n329_udc_dequeue(ep=%p,req=%p)\n", _ep, _req);
 
 	if (!udc->driver)
 		return -ESHUTDOWN;
 
-	if (!_ep || !_req)
-		return retval;
-	ep = container_of(_ep, struct n329_ep, ep);
-	udc = container_of(ep->gadget, struct n329_udc, gadget);
-
+	retval = -EINVAL;
 	spin_lock_irqsave (&udc->lock, flags);
 	list_for_each_entry(req, &ep->queue, queue) {
 		if (&req->req == _req) {
@@ -1621,9 +1608,11 @@ static int n329_udc_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 		}
 	}
 	spin_unlock_irqrestore (&udc->lock, flags);
+
 	printk("dequeue: %d, req %p\n", retval,  &req->req);
+
 	if (retval == 0) {
-		printk( "dequeued req %p from %s, len %d buf %p\n",
+		printk("dequeued req %p from %s, len %d buf %p\n",
 			req, _ep->name, _req->length, _req->buf);
 
 		_req->complete (_ep, _req);
@@ -1656,6 +1645,8 @@ static int n329_udc_get_frame (struct usb_gadget *gadget)
 {
 	int tmp;
 
+	dev_info(&gadget->dev, "%s:\n", __func__);
+
 	tmp = n329_udc_readl(REG_USBD_FRAME_CNT);
 
 	return tmp & 0xffff;
@@ -1663,12 +1654,16 @@ static int n329_udc_get_frame (struct usb_gadget *gadget)
 
 static int n329_udc_wakeup (struct usb_gadget *gadget)
 {
+	dev_info(&gadget->dev, "%s:\n", __func__);
+
 	/* Do nothing */
 	return 0;
 }
 
 static int n329_udc_set_selfpowered (struct usb_gadget *gadget, int value)
 {
+	dev_info(&gadget->dev, "%s:\n", __func__);
+
 	/* Do nothing */
 	return 0;
 }
@@ -1676,6 +1671,8 @@ static int n329_udc_set_selfpowered (struct usb_gadget *gadget, int value)
 static int n329_udc_start(struct usb_gadget *gadget,
 		struct usb_gadget_driver *driver)
 {
+	dev_info(&gadget->dev, "%s:\n", __func__);
+
 	/* Do nothing */
 	return 0;
 }
@@ -1683,6 +1680,8 @@ static int n329_udc_start(struct usb_gadget *gadget,
 static int n329_udc_stop(struct usb_gadget *gadget,
 		struct usb_gadget_driver *driver)
 {
+	dev_info(&gadget->dev, "%s:\n", __func__);
+
 	/* Do nothing */
 	return 0;
 }
@@ -1697,12 +1696,14 @@ static const struct usb_gadget_ops n329_gadget_ops = {
 
 static void n329_udc_nop_release(struct device *dev)
 {
+	dev_info(dev, "%s:\n", __func__);
+
 	/* Do nothing */
 }
 
 static u32 n329_udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 {
-	struct n329_udc	*dev = ep->dev;
+	struct n329_udc	*udc = ep->dev;
 	unsigned int volatile count=0;
 	int volatile loop, len;
 
@@ -1711,10 +1712,10 @@ static u32 n329_udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 
 	/* Handle either a write or read transfer */
 	if (mode == DMA_WRITE) {
-		while (!(n329_udc_readl(REG_USBD_EPA_IRQ_STAT + (0x28* (ep->index-1))) & 0x02));
+		while (!(n329_udc_readl(REG_USBD_EPA_IRQ_STAT + (0x28 * (ep->index - 1))) & 0x02));
 		{
-			dev->usb_dma_dir = Ep_In;
-			dev->usb_less_mps = 0;
+			udc->usb_dma_dir = Ep_In;
+			udc->usb_less_mps = 0;
 			n329_udc_writel(0x03, REG_USBD_IRQ_ENB_L);
 
 			/* Bulk in, write */
@@ -1726,7 +1727,7 @@ static u32 n329_udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 			if (loop > 0) {
 				loop--;
 				if (loop > 0)
-					dev->usb_dma_trigger_next = 1;
+					udc->usb_dma_trigger_next = 1;
 				n329_udc_start_write(ep, buf, USBD_DMA_LEN);
 			} else {
 				if (size >= ep->ep.maxpacket) {
@@ -1734,38 +1735,38 @@ static u32 n329_udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 					count *= ep->ep.maxpacket;
 
 					if (count < size)
-						dev->usb_dma_trigger_next = 1;
+						udc->usb_dma_trigger_next = 1;
 					n329_udc_start_write(ep, buf, count);
 					//len = count;
 				} else {
 					if (ep->EP_Type == EP_TYPE_BLK)
-						dev->usb_less_mps = 1;
+						udc->usb_less_mps = 1;
 					n329_udc_start_write(ep, buf, size);
 				}
 			}
 		}
 	} else if (mode == DMA_READ) {
-		dev->usb_dma_dir = Ep_Out;
-		dev->usb_less_mps = 0;
+		udc->usb_dma_dir = Ep_Out;
+		udc->usb_less_mps = 0;
 		n329_udc_writel(0x03, REG_USBD_IRQ_ENB_L);
 		n329_udc_writel((n329_udc_readl(REG_USBD_DMA_CTRL_STS) & 0xe0) |
-						ep->EP_Num, REG_USBD_DMA_CTRL_STS);
+							ep->EP_Num, REG_USBD_DMA_CTRL_STS);
 		n329_udc_writel(0x1000,  REG_USBD_EPA_IRQ_ENB +
-						(0x28 * (ep->index - 1)));
+							(0x28 * (ep->index - 1)));
 		n329_udc_writel(n329_udc_readl( REG_USBD_IRQ_ENB_L) |
-						(ep->index << 2), REG_USBD_IRQ_ENB_L);
+							(ep->index << 2), REG_USBD_IRQ_ENB_L);
 
 		if (loop > 0) {
 			loop--;
 			if (loop > 0)
-				dev->usb_dma_trigger_next = 1;
+				udc->usb_dma_trigger_next = 1;
 			n329_udc_start_read(ep, buf, USBD_DMA_LEN);
 		} else {
 			if (size >= ep->ep.maxpacket) {
 				count = size/ep->ep.maxpacket;
 				count *= ep->ep.maxpacket;
 				if (count < size)
-					dev->usb_dma_trigger_next = 1;
+					udc->usb_dma_trigger_next = 1;
 				n329_udc_start_read(ep, buf, count);
 			} else {
 				/* Using short packet intr to deal with */
@@ -1833,6 +1834,8 @@ static int __init n329_udc_probe(struct platform_device *pdev)
 	struct n329_udc *udc = &controller;
 	int i, retval;
 
+	dev_info(&pdev->dev, "%s: Probing " DRIVER_DESC "\n", __func__);
+
 	udc->pdev = pdev;
 	udc->gadget = n329_usb_gadget;
 	udc->gadget.dev.parent = &pdev->dev;
@@ -1881,7 +1884,11 @@ static int __init n329_udc_probe(struct platform_device *pdev)
 
 	spin_lock_init(&udc->lock);
 
-	n329_udc_writel(0x220, REG_USBD_PHY_CTL);
+	/* Power on usb D+ high */
+	n329_udc_writel(n329_udc_readl(REG_USBD_PHY_CTL) |
+			PHY_SUSPEND, REG_USBD_PHY_CTL);
+	n329_udc_writel(n329_udc_readl(REG_USBD_PHY_CTL) | 
+			PHY_VBUS_DETECT, REG_USBD_PHY_CTL);
 
 	/* Write the end-point packet maximum size */
 	n329_udc_writel(0x20, REG_USBD_EPA_MPS);
@@ -1929,8 +1936,7 @@ static int __init n329_udc_probe(struct platform_device *pdev)
 		goto err2;
 	}
 
-	retval = request_irq(udc->irq, n329_udc_irq,
-							IRQF_DISABLED, gadget_name, udc);
+	retval = request_irq(udc->irq, n329_udc_irq, 0, gadget_name, udc);
 	if (retval != 0) {
 		dev_dbg(&pdev->dev, "%s: request_irq failed\n", __func__);
 		retval = -ENXIO;
@@ -1945,6 +1951,8 @@ static int __init n329_udc_probe(struct platform_device *pdev)
 		dev_dbg(&pdev->dev, "%s: request_irq failed\n", __func__);
 		goto err3;
 	}
+
+	dev_info(&pdev->dev, "%s: Probe succeeded\n", __func__);
 
 	return 0;
 
@@ -1963,16 +1971,18 @@ err0:
 static int __exit n329_udc_remove(struct platform_device *pdev)
 {
 	struct n329_udc *udc = platform_get_drvdata(pdev);
-	dev_info(&pdev->dev, "Removing " DRIVER_DESC "\n");
+
+	dev_info(&pdev->dev, "%s: Removing " DRIVER_DESC "\n", __func__);
 
 	free_irq(udc->irq, udc);
 
 	iounmap(udc->reg);
 
-	platform_set_drvdata(pdev, NULL);
-
-	/* Phy suspend */
-	n329_udc_writel(0x20, REG_USBD_PHY_CTL);
+	/* Power on usb D+ high */
+	n329_udc_writel(n329_udc_readl(REG_USBD_PHY_CTL) & 
+			~PHY_VBUS_DETECT, REG_USBD_PHY_CTL);
+	n329_udc_writel(n329_udc_readl(REG_USBD_PHY_CTL) & 
+			~PHY_SUSPEND, REG_USBD_PHY_CTL);
 
 	clk_disable_unprepare(udc->usb20_hclk);
 	clk_disable_unprepare(udc->usb20_clk);
