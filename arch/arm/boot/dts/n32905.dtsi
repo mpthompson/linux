@@ -104,6 +104,7 @@
 			reg = <0xB1009000 0x1000>;
 			interrupts = <18>;
 			clocks = <&clks 53>, <&clks 54>;
+			nuvoton,usbphy = <&usbphy0>;
 			status = "disabled";
 		};
 	};
@@ -210,6 +211,17 @@
 			interrupts = <24>;
 			clocks = <&clks 70>;
 			status = "disabled";
+		};
+	};
+
+	usbphy {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		usbphy0: usb-phy@0 {
+			reg = <0>;
+			compatible = "usb-nop-xceiv";
 		};
 	};
 };

@@ -28,6 +28,39 @@
 #include <asm/io.h>
 #include <asm/mach-types.h>
 
+/* UHC Control Registers */
+#define	REG_HC_REVISION			(0x000)		/* Revision Register */
+#define	REG_HC_CONTROL			(0x004)		/* Control Register */
+#define	REG_HC_CMD_STATUS		(0x008)		/* Command Status Register */
+#define	REG_HC_INT_STATUS		(0x00C)		/* Interrupt Status  Register */
+#define	REG_HC_INT_ENABLE		(0x010)		/* Interrupt Enable Register */
+#define	REG_HC_INT_DISABLE		(0x014)		/* Interrupt Disable Regster */
+#define	REG_HC_HCCA				(0x018)		/* Communication Area Register */
+#define	REG_HC_PERIOD_CURED		(0x01C)		/* HcPeriodCurrentED */
+#define	REG_HC_CTRL_HEADED		(0x020)		/* Control Head ED Register */
+#define	REG_HC_CTRL_CURED		(0x024)		/* Control Current ED Regist */
+#define	REG_HC_BULK_HEADED		(0x028)		/* Bulk Head ED Register */
+#define	REG_HC_BULK_CURED		(0x02C)		/* Bulk Current ED Register */
+#define	REG_HC_DONE_HEAD		(0x030)		/* Done Head Register */
+#define	REG_HC_FM_INTERVAL		(0x034)		/* Frame Interval Register */
+#define	REG_HC_FM_REMAINING		(0x038)		/* Frame Remaining Register */
+#define	REG_HC_FM_NUMBER		(0x03C)		/* Frame Number Register */
+#define	REG_HC_PERIOD_START		(0x040)		/* Periodic Start Register */
+#define	REG_HC_LS_THRESHOLD		(0x044)		/* Low Speed Threshold Register */
+#define	REG_HC_RH_DESCRIPTORA	(0x048)		/* Root Hub Descriptor A Register */
+#define	REG_HC_RH_DESCRIPTORB	(0x04C)		/* Root Hub Descriptor B Register */
+#define	REG_HC_RH_STATUS		(0x050)		/* Root Hub Status Register */
+#define	REG_HC_RH_PORT_STATUS1	(0x054)		/* Root Hub Port Status [1] */
+#define	REG_HC_RH_PORT_STATUS2	(0x058)		/* Root Hub Port Status [2] */
+#define	REG_HC_RH_OP_MODE		(0x204)
+	#define	DBR16				BIT(0)		/* Data Buffer Region 16 */
+	#define	HCABORT				BIT(1)		/* AHB Bus ERROR Response */
+	#define	OCALOW				BIT(3)		/* Over Current Active Low */
+	#define	PPCALOW				BIT(4)		/* Port Power Control Active Low */
+	#define	SIEPDIS				BIT(8)		/* SIE Pipeline Disable */
+	#define	DISPRT1				BIT(16)		/* Disable Port 1 */
+	#define	DISPRT2				BIT(17)		/* Disable Port 2 */
+
 #define DRIVER_DESC "Nuvoton N329XX OHCI Host Controller"
 
 static struct clk *usb_clk;
@@ -36,12 +69,24 @@ static struct clk *usbh_hclk;
 static const char hcd_name[] = "ohci-n329";
 static struct hc_driver __read_mostly ohci_n329_hc_driver;
 
+extern unsigned long n329_clocks_config_usb(unsigned long rate);
+
 static int n329_ohci_reset(struct usb_hcd *hcd)
 {
+	int ret;
+
+	hcd->phy = usb_get_phy(USB_PHY_TYPE_USB2);
+	if (hcd->phy == NULL) {
+		dev_dbg(hcd->self.controller, "%s: usb_get_phy failed\n", __func__);
+		return -ENODEV;
+	}
+
+	ret = ohci_setup(hcd);
+	if (ret < 0)
+		return ret;
+
 	return 0;
 }
-
-extern unsigned long n329_clocks_config_usb(unsigned long rate);
 
 static int n329_ohci_drv_probe(struct platform_device *pdev)
 {
@@ -49,6 +94,7 @@ static int n329_ohci_drv_probe(struct platform_device *pdev)
 	struct resource *iores;
 	struct usb_hcd *hcd;
 	struct hc_driver *driver;
+	void __iomem *hcd_base;
 	int irq, retval;
 
 	dev_info(&pdev->dev, "Probing " DRIVER_DESC "\n");
@@ -56,45 +102,21 @@ static int n329_ohci_drv_probe(struct platform_device *pdev)
 	driver = &ohci_n329_hc_driver;
 
 	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!iores)
+	if (!iores) {
+		dev_dbg(&pdev->dev, "%s: platform_get_resource failed\n", __func__);
 		return -EINVAL;
+	}
 
 	usb_clk = of_clk_get(np, 0);
-	if (IS_ERR(usb_clk))
+	if (IS_ERR(usb_clk)) {
+		dev_dbg(&pdev->dev, "%s: of_clk_get failed\n", __func__);
 		return PTR_ERR(usb_clk);
+	}
 	usbh_hclk = of_clk_get(np, 1);
 	if (IS_ERR(usbh_hclk)) {
 		clk_put(usb_clk);
+		dev_dbg(&pdev->dev, "%s: of_clk_get failed\n", __func__);
 		return PTR_ERR(usbh_hclk);
-	}
-
-	hcd = usb_create_hcd(driver, &pdev->dev, dev_name(&pdev->dev));
-	if (!hcd) {
-		dev_dbg(&pdev->dev, "usb_create_hcd failed\n");
-		retval = -ENOMEM;
-		goto err0;
-	}
-	hcd->rsrc_start = iores->start;
-	hcd->rsrc_len = iores->end - iores->start + 1;
-
-	if (!request_mem_region(hcd->rsrc_start, hcd->rsrc_len, hcd_name)) {
-		dev_dbg(&pdev->dev, "request_mem_region failed\n");
-		retval = -EBUSY;
-		goto err1;
-	}
-
-	hcd->regs = ioremap(hcd->rsrc_start, hcd->rsrc_len);
-	if (!hcd->regs) {
-		dev_err(&pdev->dev, "can't ioremap OHCI HCD\n");
-		retval = -ENOMEM;
-		goto err2;
-	}
-
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(&pdev->dev, "failed to get IRQ\n");
-		retval = -ENXIO;
-		goto err3;
 	}
 
 	clk_prepare_enable(usb_clk);
@@ -104,26 +126,63 @@ static int n329_ohci_drv_probe(struct platform_device *pdev)
 	if (clk_get_rate(usb_clk) != 48000000) {
 		dev_err(&pdev->dev, "failed to set USB host clock to 48MHz\n");
 		retval = -ENXIO;
+		goto err1;
+	}
+
+	if (!request_mem_region(iores->start,
+					resource_size(iores), pdev->name)) {
+		dev_dbg(&pdev->dev, "%s: request_mem_region failed\n", __func__);
+		retval = -EBUSY;
+		goto err1;
+	}
+
+	hcd_base = ioremap(iores->start, resource_size(iores));
+	if (hcd_base == NULL) {
+		dev_dbg(&pdev->dev, "%s: ioremap failed\n", __func__);
+		retval = -ENXIO;
+		goto err2;
+	}
+
+	/* Disable port 2 */
+	/* XXX Make port disable configurable */
+	writel((readl(hcd_base + REG_HC_RH_OP_MODE) & ~(DISPRT2 | DISPRT1)) |
+			DISPRT2, hcd_base + REG_HC_RH_OP_MODE);
+
+	hcd = usb_create_hcd(driver, &pdev->dev, dev_name(&pdev->dev));
+	if (!hcd) {
+		dev_dbg(&pdev->dev, "usb_create_hcd failed\n");
+		retval = -ENOMEM;
+		goto err3;
+	}
+	hcd->rsrc_start = iores->start;
+	hcd->rsrc_len = resource_size(iores);
+	hcd->regs = hcd_base;
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
+		dev_dbg(&pdev->dev, "%s: platform_get_irq failed\n", __func__);
+		retval = -ENXIO;
 		goto err4;
 	}
 
 	retval = usb_add_hcd(hcd, irq, 0);
-	if (retval)
-		goto err3;
+	if (retval) {
+		dev_dbg(&pdev->dev, "%s: platform_get_irq failed\n", __func__);
+		goto err4;
+	}
 
 	device_wakeup_enable(hcd->self.controller);
 	return 0;
 
 err4:
+	usb_put_hcd(hcd);
+err3:
+	iounmap(hcd_base);
+err2:
+	release_mem_region(iores->start, resource_size(iores));
+err1:
 	clk_disable_unprepare(usbh_hclk);
 	clk_disable_unprepare(usb_clk);
-err3:
-	iounmap(hcd->regs);
-err2:
-	release_mem_region(hcd->rsrc_start, hcd->rsrc_len);
-err1:
-	usb_put_hcd(hcd);
-err0:
 	clk_put(usb_clk);
 	clk_put(usbh_hclk);
 	return retval;

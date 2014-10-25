@@ -50,13 +50,33 @@
 	#define USABLE_CLK			BIT(6)
 	#define USB_VBUS_STS		BIT(8)
 #define REG_USBD_OPER			(USBD_BASE + 0x18)	/* USB operation register */
+	#define USB_GEN_RES			BIT(0)
+	#define USB_HS				BIT(1)
+	#define USB_CUR_SPD_HS		BIT(2)
 #define REG_USBD_FRAME_CNT		(USBD_BASE + 0x1c)	/* USB frame count register */
 #define REG_USBD_ADDR			(USBD_BASE + 0x20)	/* USB address register */
 #define REG_USBD_MEM_TEST		(USBD_BASE + 0x24)	/* USB test mode register */
 #define REG_USBD_CEP_DATA_BUF	(USBD_BASE + 0x28)	/* Control-ep data buffer register */
 #define REG_USBD_CEP_CTRL_STAT	(USBD_BASE + 0x2c)	/* Control-ep control and status register */
+	#define	CEP_NAK_CLEAR		0x00  				/* Writing zero clears the nak bit */
+	#define	CEP_SEND_STALL		BIT(1)
+	#define	CEP_ZEROLEN			BIT(2)
+	#define	CEP_FLUSH			BIT(3)
 #define REG_USBD_CEP_IRQ_ENB	(USBD_BASE + 0x30)	/* Control-ep interrupt enable register */
 #define REG_USBD_CEP_IRQ_STAT	(USBD_BASE + 0x34)	/* Control-ep interrupt status register */
+	#define	CEP_SUPTOK			BIT(0)
+	#define	CEP_SUPPKT			BIT(1)
+	#define	CEP_OUT_TOK			BIT(2)
+	#define	CEP_IN_TOK			BIT(3)
+	#define	CEP_PING_TOK		BIT(4)
+	#define	CEP_DATA_TXD		BIT(5)
+	#define	CEP_DATA_RXD		BIT(6)
+	#define	CEP_NAK_SENT		BIT(7)
+	#define	CEP_STALL_SENT		BIT(8)
+	#define	CEP_USB_ERR			BIT(9)
+	#define	CEP_STS_END			BIT(10)
+	#define	CEP_BUFF_FULL		BIT(11)
+	#define	CEP_BUFF_EMPTY		BIT(12)
 #define REG_USBD_IN_TRNSFR_CNT	(USBD_BASE + 0x38)	/* In-transfer data count register */
 #define REG_USBD_OUT_TRNSFR_CNT	(USBD_BASE + 0x3c)	/* Out-transfer data count register */
 #define REG_USBD_CEP_CNT		(USBD_BASE + 0x40)	/* Control-ep data count register */
@@ -71,12 +91,40 @@
 /* Endpoint A */
 #define REG_USBD_EPA_DATA_BUF	(USBD_BASE + 0x64)	/* Endpoint A data buffer register */
 #define REG_USBD_EPA_IRQ_STAT	(USBD_BASE + 0x68)	/* Endpoint A interrupt status register */
+	#define	EP_BUFF_FULL		BIT(0)
+	#define	EP_BUFF_EMPTY		BIT(1)
+	#define	EP_SHORT_PKT		BIT(2)
+	#define	EP_DATA_TXD			BIT(3)
+	#define	EP_DATA_RXD			BIT(4)
+	#define	EP_OUT_TOK			BIT(5)
+	#define	EP_IN_TOK			BIT(6)
+	#define	EP_PING_TOK			BIT(7)
+	#define	EP_NAK_SENT			BIT(8)
+	#define	EP_STALL_SENT		BIT(9)
+	#define	EP_USB_ERR			BIT(11)
+	#define	EP_BO_SHORT_PKT		BIT(12)
 #define REG_USBD_EPA_IRQ_ENB	(USBD_BASE + 0x6c)	/* Endpoint A interrupt enable register */
 #define REG_USBD_EPA_DATA_CNT	(USBD_BASE + 0x70)	/* Data count available in endpoint A buffer */
 #define REG_USBD_EPA_RSP_SC		(USBD_BASE + 0x74)	/* Endpoint A response register set/clear */
+	#define	EP_BUFF_FLUSH		0x01
+	#define	EP_MODE				0x06
+	#define	EP_MODE_AUTO		0x01 /* ??? */
+	#define	EP_MODE_MAN			0x02 /* ??? */
+	#define	EP_MODE_FLY			0x03 /* ??? */
+	#define	EP_TOGGLE			0x8
+	#define	EP_HALT				0x10
+	#define	EP_ZERO_IN			0x20
+	#define	EP_PKT_END			0x40
 #define REG_USBD_EPA_MPS		(USBD_BASE + 0x78)	/* Endpoint A max packet size register */
 #define REG_USBD_EPA_TRF_CNT	(USBD_BASE + 0x7c)	/* Endpoint A transfer count register */
 #define REG_USBD_EPA_CFG		(USBD_BASE + 0x80)	/* Endpoint A configuration register */
+	#define	EP_VALID			0x01
+	#define	EP_TYPE				0x06 /*	2-bit size */
+	#define	EP_TYPE_BLK			0x01
+	#define	EP_TYPE_INT			0x02
+	#define	EP_TYPE_ISO			0x03
+	#define	EP_DIR				0x08
+	#define	EP_NO				0xf0 /*	4-bit size */
 #define REG_USBD_EPA_START_ADDR	(USBD_BASE + 0x84)	/* Endpoint A ram start address register */
 #define REG_USBD_EPA_END_ADDR	(USBD_BASE + 0x88)	/* Endpoint A ram end address register */
 /* Endpoint B */
@@ -162,67 +210,6 @@
 #define USBR_GET_INTERFACE		0x0A
 #define USBR_SET_INTERFACE		0x0B
 #define USBR_SYNCH_FRAME		0x0C
-
-
-/* Definition of Bits in USB_OPER register */
-#define USB_GEN_RES             0x1
-#define USB_HS		        	0x2
-#define USB_CUR_SPD_HS          0x4
-
-/* Definition of Bits in CEP_IRQ_STS register */
-#define CEP_SUPTOK	 			0x0001
-#define CEP_SUPPKT				0x0002
-#define CEP_OUT_TOK				0x0004
-#define CEP_IN_TOK				0x0008
-#define CEP_PING_TOK	        0x0010
-#define CEP_DATA_TXD	        0x0020
-#define CEP_DATA_RXD	        0x0040
-#define CEP_NAK_SENT	        0x0080
-#define CEP_STALL_SENT	        0x0100
-#define CEP_USB_ERR				0x0200
-#define CEP_STS_END				0x0400
-#define CEP_BUFF_FULL	        0x0800
-#define CEP_BUFF_EMPTY	        0x1000
-
-/* Definition of Bits in CEP_CTRL_STS register */
-#define CEP_NAK_CLEAR			0x00  /* Writing zero clears the nak bit */
-#define CEP_SEND_STALL			0x02
-#define CEP_ZEROLEN				0x04
-#define CEP_FLUSH				0x08
-
-//Definition of Bits in EP_IRQ_STS register
-#define EP_BUFF_FULL	        0x001
-#define EP_BUFF_EMPTY	        0x002
-#define EP_SHORT_PKT	        0x004
-#define EP_DATA_TXD				0x008
-#define EP_DATA_RXD				0x010
-#define EP_OUT_TOK				0x020
-#define EP_IN_TOK				0x040
-#define EP_PING_TOK				0x080
-#define EP_NAK_SENT				0x100
-#define EP_STALL_SENT	        0x200
-#define EP_USB_ERR				0x800
-#define EP_BO_SHORT_PKT			0x1000
-
-/* Bit Definitons of EP_RSP_SC Register */
-#define EP_BUFF_FLUSH           0x01
-#define EP_MODE                 0x06
-#define EP_MODE_AUTO	        0x01
-#define EP_MODE_MAN 	        0x02
-#define EP_MODE_FLY				0x03
-#define EP_TOGGLE				0x8
-#define EP_HALT					0x10
-#define EP_ZERO_IN              0x20
-#define EP_PKT_END              0x40
-
-/* Bit Definitons of EP_CFG Register */
-#define EP_VALID				0x01
-#define EP_TYPE					0x06 /* 2-bit size */
-#define EP_TYPE_BLK				0x01
-#define EP_TYPE_INT				0x02
-#define EP_TYPE_ISO				0x03
-#define EP_DIR					0x08
-#define EP_NO					0xf0 /* 4-bit size */
 
 /* Define Endpoint feature */
 #define Ep_In                   0x01
@@ -1804,30 +1791,6 @@ static struct usb_gadget n329_usb_gadget = {
 	},
 };
 
-static void n329_udc_usb_init(struct n329_udc *udc)
-{
-	int	j;
-
-	udc->usb_address = 0;
-	udc->usb_devstate = 0;
-
-	/* Configure USB controller */
-	n329_udc_writel(IRQ_USB_STAT | IRQ_CEP, REG_USBD_IRQ_ENB_L);
-	n329_udc_writel(USB_RESUME | USB_RST_STS| USB_VBUS_STS, REG_USBD_IRQ_ENB);
-
-	/* USB 2.0 operation */
-	n329_udc_writel(USB_HS, REG_USBD_OPER);
-
-	n329_udc_writel(0, REG_USBD_ADDR);
-	n329_udc_writel(CEP_SUPPKT | CEP_STS_END, REG_USBD_CEP_IRQ_ENB);
-
-	for (j = 0; j < N329_ENDPOINTS; j++) {
-		udc->ep[j].EP_Num = 0xff;
-		udc->ep[j].EP_Dir = 0xff;
-		udc->ep[j].EP_Type = 0xff;
-	}
-}
-
 static int __init n329_udc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -1884,18 +1847,32 @@ static int __init n329_udc_probe(struct platform_device *pdev)
 
 	spin_lock_init(&udc->lock);
 
-	/* Power on usb D+ high */
-	n329_udc_writel(n329_udc_readl(REG_USBD_PHY_CTL) |
-			PHY_SUSPEND, REG_USBD_PHY_CTL);
-	n329_udc_writel(n329_udc_readl(REG_USBD_PHY_CTL) | 
-			PHY_VBUS_DETECT, REG_USBD_PHY_CTL);
+	/* Disable PHY VBUS detection */
+	n329_udc_writel(PHY_SUSPEND, REG_USBD_PHY_CTL);
 
 	/* Write the end-point packet maximum size */
 	n329_udc_writel(0x20, REG_USBD_EPA_MPS);
 	while ((n329_udc_readl(REG_USBD_EPA_MPS) & 0x7ff) != 0x20)
 		n329_udc_writel(0x20, REG_USBD_EPA_MPS);
 
-	n329_udc_usb_init(udc);
+	udc->usb_address = 0;
+	udc->usb_devstate = 0;
+
+	/* Configure USB controller */
+	n329_udc_writel(IRQ_USB_STAT | IRQ_CEP, REG_USBD_IRQ_ENB_L);
+	n329_udc_writel(USB_RESUME | USB_RST_STS| USB_VBUS_STS, REG_USBD_IRQ_ENB);
+
+	/* USB 2.0 operation */
+	n329_udc_writel(USB_HS, REG_USBD_OPER);
+
+	n329_udc_writel(0, REG_USBD_ADDR);
+	n329_udc_writel(CEP_SUPPKT | CEP_STS_END, REG_USBD_CEP_IRQ_ENB);
+
+	for (i = 0; i < N329_ENDPOINTS; i++) {
+		udc->ep[i].EP_Num = 0xff;
+		udc->ep[i].EP_Dir = 0xff;
+		udc->ep[i].EP_Type = 0xff;
+	}
 
 	/* Setup endpoint information */
 	INIT_LIST_HEAD(&udc->gadget.ep_list);
@@ -1948,9 +1925,12 @@ static int __init n329_udc_probe(struct platform_device *pdev)
 
 	retval = device_add(&udc->gadget.dev);
 	if (retval != 0) {
-		dev_dbg(&pdev->dev, "%s: request_irq failed\n", __func__);
+		dev_dbg(&pdev->dev, "%s: device_add failed\n", __func__);
 		goto err3;
 	}
+
+	/* Enable PHY VBUS detection */
+	n329_udc_writel(PHY_SUSPEND | PHY_VBUS_DETECT, REG_USBD_PHY_CTL);
 
 	dev_info(&pdev->dev, "%s: Probe succeeded\n", __func__);
 

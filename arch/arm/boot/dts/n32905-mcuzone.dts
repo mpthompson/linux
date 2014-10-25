@@ -24,7 +24,7 @@
 	compatible = "nuvoton,n32905-mcuzone", "nuvoton,n32905", "nuvoton,n329";
 
 	ahb@B0000000 {
-		udc@B1008000 {
+		uhc@B1009000 {
 			pinctrl-names = "default";
 			pinctrl-0 = <&usb0_pins>;
 			status = "okay";

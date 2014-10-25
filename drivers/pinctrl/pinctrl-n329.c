@@ -773,7 +773,7 @@ static int n329_pinctrl_enable(struct pinctrl_dev *pctldev,
 	for (i = 0; i < g->npins; i++) {
 		bank = PINID_TO_BANK(g->pins[i]);
 		pin = PINID_TO_PIN(g->pins[i]);
-		reg = pc->gcr_base + HW_IRQSRCGPA + (bank << 2);
+		reg = pc->gcr_base + HW_GCR_GPAFUN + (bank << 2);
 		shift = pin << 1;
 
 		val = readl(reg);

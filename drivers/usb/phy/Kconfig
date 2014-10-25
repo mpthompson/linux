@@ -50,6 +50,13 @@ config KEYSTONE_USB_PHY
 	  interface to interact with USB 2.0 and USB 3.0 PHY that is part
 	  of the Keystone SOC.
 
+config N329_USB_PHY
+	tristate "Nuvoton USB PHY Driver"
+	depends on ARCH_N329
+	select NOP_USB_XCEIV
+	help
+	  Enable this to support Nuvoton N329XX USB phy.
+
 config NOP_USB_XCEIV
 	tristate "NOP USB Transceiver Driver"
 	select USB_PHY
