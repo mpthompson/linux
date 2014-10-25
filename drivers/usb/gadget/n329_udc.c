@@ -1716,7 +1716,7 @@ static u32 n329_udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 		{
 			udc->usb_dma_dir = Ep_In;
 			udc->usb_less_mps = 0;
-			n329_udc_writel(0x03, REG_USBD_IRQ_ENB_L);
+			n329_udc_writel(IRQ_USB_STAT | IRQ_CEP, REG_USBD_IRQ_ENB_L);
 
 			/* Bulk in, write */
 			n329_udc_writel((n329_udc_readl(REG_USBD_DMA_CTRL_STS) & 0xe0) |
@@ -1748,12 +1748,12 @@ static u32 n329_udc_transfer(struct n329_ep *ep, u8* buf, size_t size, u32 mode)
 	} else if (mode == DMA_READ) {
 		udc->usb_dma_dir = Ep_Out;
 		udc->usb_less_mps = 0;
-		n329_udc_writel(0x03, REG_USBD_IRQ_ENB_L);
+		n329_udc_writel(IRQ_USB_STAT | IRQ_CEP, REG_USBD_IRQ_ENB_L);
 		n329_udc_writel((n329_udc_readl(REG_USBD_DMA_CTRL_STS) & 0xe0) |
 							ep->EP_Num, REG_USBD_DMA_CTRL_STS);
 		n329_udc_writel(0x1000,  REG_USBD_EPA_IRQ_ENB +
 							(0x28 * (ep->index - 1)));
-		n329_udc_writel(n329_udc_readl( REG_USBD_IRQ_ENB_L) |
+		n329_udc_writel(n329_udc_readl(REG_USBD_IRQ_ENB_L) |
 							(ep->index << 2), REG_USBD_IRQ_ENB_L);
 
 		if (loop > 0) {
@@ -1812,7 +1812,7 @@ static void n329_udc_usb_init(struct n329_udc *udc)
 	udc->usb_devstate = 0;
 
 	/* Configure USB controller */
-	n329_udc_writel(0x03, REG_USBD_IRQ_ENB_L);
+	n329_udc_writel(IRQ_USB_STAT | IRQ_CEP, REG_USBD_IRQ_ENB_L);
 	n329_udc_writel(USB_RESUME | USB_RST_STS| USB_VBUS_STS, REG_USBD_IRQ_ENB);
 
 	/* USB 2.0 operation */
