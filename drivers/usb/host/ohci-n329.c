@@ -143,8 +143,7 @@ static int n329_ohci_drv_probe(struct platform_device *pdev)
 		goto err2;
 	}
 
-	/* Disable port 2 */
-	/* XXX Make port disable configurable */
+	/* Enable port 1, disable port 2 */
 	writel((readl(hcd_base + REG_HC_RH_OP_MODE) & ~(DISPRT2 | DISPRT1)) |
 			DISPRT2, hcd_base + REG_HC_RH_OP_MODE);
 

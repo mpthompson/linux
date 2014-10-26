@@ -188,6 +188,15 @@
 				>;
 				nuvoton,pull-up = <N329_PULL_DISABLE>;
 			};
+
+			usb1_pins: usb1-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPB00__UHL_DP1
+					N32905_PAD_GPB01__UHL_DM1
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
 		};
 
 		tmr@B8002000 {
