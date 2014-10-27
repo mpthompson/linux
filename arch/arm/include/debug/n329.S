@@ -12,24 +12,24 @@
 #include <linux/n329/serial.h>
 
 #ifdef CONFIG_DEBUG_UART_PHYS
-		.macro	addruart, rp, rv, tmp
-		ldr	\rp, =CONFIG_DEBUG_UART_PHYS
-		ldr	\rv, =CONFIG_DEBUG_UART_VIRT
-		.endm
+	.macro	addruart, rp, rv, tmp
+	ldr	\rp, =CONFIG_DEBUG_UART_PHYS
+	ldr	\rv, =CONFIG_DEBUG_UART_VIRT
+	.endm
 #endif
 
-		.macro	senduart,rd,rx
-		strb	\rd, [\rx, #HW_UA_THR]
-		.endm
+	.macro	senduart,rd,rx
+	strb	\rd, [\rx, #HW_UA_THR]
+	.endm
 
-		.macro	waituart,rd,rx
+	.macro	waituart,rd,rx
 1001:	ldr	\rd, [\rx, #HW_UA_FSR]
-		tst	\rd, #HW_UA_FSR_TX_FULL
-		bne	1001b
-		.endm
+	tst	\rd, #HW_UA_FSR_TX_FULL
+	bne	1001b
+	.endm
 
-		.macro	busyuart,rd,rx
+	.macro	busyuart,rd,rx
 1001:	ldr	\rd, [\rx, #HW_UA_FSR]
-		tst	\rd, #HW_UA_FSR_TE_FLAG
-		beq	1001b
-		.endm
+	tst	\rd, #HW_UA_FSR_TE_FLAG
+	beq	1001b
+	.endm

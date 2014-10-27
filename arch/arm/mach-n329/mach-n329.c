@@ -26,8 +26,8 @@
 #include <asm/mach/time.h>
 #include <asm/system_misc.h>
 
-#define HW_GCR_CHIPID 			0x00
-#define HW_GCR_CHIPID_MASK		0x00ffffff
+#define HW_GCR_CHIPID 		0x00
+#define HW_GCR_CHIPID_MASK	0x00ffffff
 #define HW_GCR_CHIPID_N32905	0xfa5c30
 
 #define N329_CHIP_REV_UNKNOWN	0xff
@@ -36,7 +36,7 @@ static u32 chipid;
 static u32 socid;
 
 /* Semaphore for preventing concurrent DMAC devices activity */
-DEFINE_SEMAPHORE(dmac_sem); 
+DEFINE_SEMAPHORE(dmac_sem);
 EXPORT_SYMBOL(dmac_sem);
 
 /* Semaphore for preventing concurrent FMI devices activity */
@@ -47,12 +47,12 @@ static void __iomem *wtcr_addr;
 
 static void __init n32905_mcuzone_init(void)
 {
-	/* Do nothing for now. */
+	/* Do nothing for now */
 }
 
 static void __init n32905_demo_board_init(void)
 {
-	/* Do nothing for now. */
+	/* Do nothing for now */
 }
 
 static const char __init *n329_get_soc_id(void)
@@ -157,15 +157,15 @@ static void __init n329_machine_init(void)
 static void n329_restart(enum reboot_mode mode, const char *cmd)
 {
 	if (wtcr_addr) {
-		
+
 		/* XXX Turn off speaker. */
 
 		/* XXX Turn off video out. */
 
 		/* Turn off power and reset via the watchdog. */
-		__raw_writel((__raw_readl(wtcr_addr) & 
-						~(3 << 4 | 1 << 10)) | 0x2C2, 
-						wtcr_addr);
+		__raw_writel((__raw_readl(wtcr_addr) &
+				~(3 << 4 | 1 << 10)) | 0x2C2,
+				wtcr_addr);
 
 		/* Delay for reset to occur. */
 		mdelay(500);

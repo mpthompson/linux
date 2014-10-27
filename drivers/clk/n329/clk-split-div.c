@@ -21,6 +21,8 @@
 
 /*
  * DOC: basic adjustable divider clock that cannot gate
+ * This specific clock handles a weirdness in the N329XX where some 
+ * dividers are not specified by contiguous bits in a register
  *
  * Traits of this clock:
  * prepare - clk_prepare only ensures that parents are prepared
@@ -55,7 +57,8 @@ static unsigned int _get_maxdiv(struct clk_split_divider *divider)
 	return div_mask(divider) + 1;
 }
 
-static unsigned int _get_div(struct clk_split_divider *divider, unsigned int val)
+static unsigned int _get_div(struct clk_split_divider *divider, 
+			unsigned int val)
 {
 	if (divider->flags & CLK_DIVIDER_ONE_BASED)
 		return val;
@@ -64,7 +67,8 @@ static unsigned int _get_div(struct clk_split_divider *divider, unsigned int val
 	return val + 1;
 }
 
-static unsigned int _get_val(struct clk_split_divider *divider, unsigned int div)
+static unsigned int _get_val(struct clk_split_divider *divider, 
+			unsigned int div)
 {
 	if (divider->flags & CLK_DIVIDER_ONE_BASED)
 		return div;
@@ -136,8 +140,9 @@ static int _div_round_closest(struct clk_split_divider *divider,
 	return (up - div) <= (div - down) ? up : down;
 }
 
-static int _div_round(struct clk_split_divider *divider, unsigned long parent_rate,
-		unsigned long rate)
+static int _div_round(struct clk_split_divider *divider, 
+			unsigned long parent_rate,
+			unsigned long rate)
 {
 	if (divider->flags & CLK_DIVIDER_ROUND_CLOSEST)
 		return _div_round_closest(divider, parent_rate, rate);
@@ -146,7 +151,8 @@ static int _div_round(struct clk_split_divider *divider, unsigned long parent_ra
 }
 
 static bool _is_best_div(struct clk_split_divider *divider,
-		unsigned long rate, unsigned long now, unsigned long best)
+			unsigned long rate, unsigned long now, 
+			unsigned long best)
 {
 	if (divider->flags & CLK_DIVIDER_ROUND_CLOSEST)
 		return abs(rate - now) < abs(rate - best);
@@ -196,9 +202,10 @@ static int clk_divider_bestdiv(struct clk_hw *hw, unsigned long rate,
 			continue;
 		if (rate * i == parent_rate_saved) {
 			/*
-			 * It's the most ideal case if the requested rate can be
-			 * divided from parent clock without needing to change
-			 * parent rate, so return the divider immediately.
+			 * It's the most ideal case if the requested rate 
+			 * can be divided from parent clock without needing 
+			 * to change parent rate, so return the divider 
+			 * immediately.
 			 */
 			*best_parent_rate = parent_rate_saved;
 			return i;
@@ -222,7 +229,7 @@ static int clk_divider_bestdiv(struct clk_hw *hw, unsigned long rate,
 }
 
 static long clk_divider_round_rate(struct clk_hw *hw, unsigned long rate,
-				unsigned long *prate)
+			unsigned long *prate)
 {
 	int div;
 	div = clk_divider_bestdiv(hw, rate, prate);
@@ -231,7 +238,7 @@ static long clk_divider_round_rate(struct clk_hw *hw, unsigned long rate,
 }
 
 static int clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
-				unsigned long parent_rate)
+			unsigned long parent_rate)
 {
 	struct clk_split_divider *divider = to_clk_divider(hw);
 	unsigned int div, value;
@@ -257,7 +264,8 @@ static int clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
 	val &= ~(div_hi_mask(divider) << divider->hi_shift);
 
 	val |= (value & div_lo_mask(divider)) << divider->lo_shift;
-	val |= ((value >> divider->lo_width) & div_hi_mask(divider)) << divider->hi_shift;
+	val |= ((value >> divider->lo_width) & div_hi_mask(divider)) << 
+					divider->hi_shift;
 
 	clk_writel(val, divider->reg);
 

@@ -87,7 +87,8 @@ static int clk_gate_is_enabled(struct clk_hw *hw)
 
 	reg = clk_readl(gate->reg);
 
-	return (reg & BIT(gate->bit1_idx)) && (reg & BIT(gate->bit2_idx)) ? 1 : 0;
+	return (reg & BIT(gate->bit1_idx)) && 
+			(reg & BIT(gate->bit2_idx)) ? 1 : 0;
 }
 
 const struct clk_ops clk_and_gate_ops = {
