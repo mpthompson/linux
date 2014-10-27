@@ -31,56 +31,55 @@
 #include "core.h"
 #include "pinctrl-n329.h"
 
-#define SUFFIX_LEN		4
-#define BADPINID		0xffff
+#define SUFFIX_LEN	4
+#define BADPINID	0xffff
 
+#define REG_GCR_GPAFUN	0x80	/* R/W GPIO A Multi Function Control */
+#define REG_GCR_GPBFUN	0x84	/* R/W GPIO B Multi Function Control */
+#define REG_GCR_GPCFUN	0x88	/* R/W GPIO C Multi Function Control */
+#define REG_GCR_GPDFUN	0x8C	/* R/W GPIO D Multi Function Control */
+#define REG_GCR_GPEFUN	0x90	/* R/W GPIO E Multi Function Control */
 
-#define HW_GCR_GPAFUN	0x80	/* R/W GPIO A Multi Function Control */
-#define HW_GCR_GPBFUN	0x84	/* R/W GPIO B Multi Function Control */
-#define HW_GCR_GPCFUN	0x88	/* R/W GPIO C Multi Function Control */
-#define HW_GCR_GPDFUN	0x8C	/* R/W GPIO D Multi Function Control */
-#define HW_GCR_GPEFUN	0x90	/* R/W GPIO E Multi Function Control */
-
-#define HW_GPIOA_OMD	0x00	/* R/W GPIO Port A Output Mode Enable */
-#define HW_GPIOA_PUEN	0x04	/* R/W GPIO Port A Pull-up Resistor Enable */
-#define HW_GPIOA_DOUT	0x08	/* R/W GPIO Port A Data Output Value */
-#define HW_GPIOA_PIN	0x0C	/* R GPIO Port A Value */
-#define HW_GPIOB_OMD	0x10	/* R/W GPIO Port B Output Mode Enable */
-#define HW_GPIOB_PUEN	0x14	/* R/W GPIO Port B Pull-up Resistor Enable */
-#define HW_GPIOB_DOUT	0x18	/* R/W GPIO Port B Data Output Value */
-#define HW_GPIOB_PIN	0x1C	/* R GPIO Port B Value */
-#define HW_GPIOC_OMD	0x20	/* R/W GPIO Port C Output Mode Enable */
-#define HW_GPIOC_PUEN	0x24	/* R/W GPIO Port C Pull-up Resistor Enable */
-#define HW_GPIOC_DOUT	0x28	/* R/W GPIO Port C Data Output Value */
-#define HW_GPIOC_PIN	0x2C	/* R GPIO Port C Value */
-#define HW_GPIOD_OMD	0x30	/* R/W GPIO Port D Output Mode Enable */
-#define HW_GPIOD_PUEN	0x34	/* R/W GPIO Port D Pull-up Resistor Enable */
-#define HW_GPIOD_DOUT	0x38	/* R/W GPIO Port D Data Output Value */
-#define HW_GPIOD_PIN	0x3C	/* R GPIO Port D Value */
-#define HW_GPIOE_OMD	0x40	/* R/W GPIO Port E Output Mode Enable */
-#define HW_GPIOE_PUEN	0x44	/* R/W GPIO Port E Pull-up Resistor Enable */
-#define HW_GPIOE_DOUT	0x48	/* R/W GPIO Port E Data Output Value */
-#define HW_GPIOE_PIN	0x4C	/* R GPIO Port E Value */
-#define HW_DBNCECON		0x70	/* R/W External Interrupt De-bounce Control */
-#define HW_IRQSRCGPA	0x80	/* R/W GPIO Port A IRQ Source Grouping */
-#define HW_IRQSRCGPB	0x84	/* R/W GPIO Port B IRQ Source Grouping */
-#define HW_IRQSRCGPC	0x88	/* R/W GPIO Port C IRQ Source Grouping */
-#define HW_IRQSRCGPD	0x8C	/* R/W GPIO Port D IRQ Source Grouping */
-#define HW_IRQSRCGPE	0x90	/* R/W GPIO Port E IRQ Source Grouping */
-#define HW_IRQENGPA		0xA0	/* R/W GPIO Port A Interrupt Enable */
-#define HW_IRQENGPB		0xA4	/* R/W GPIO Port B Interrupt Enable */
-#define HW_IRQENGPC		0xA8	/* R/W GPIO Port C Interrupt Enable */
-#define HW_IRQENGPD		0xAC	/* R/W GPIO Port D Interrupt Enable */
-#define HW_IRQENGPE		0xB0	/* R/W GPIO Port E Interrupt Enable */
-#define HW_IRQLHSEL		0xC0	/* R/W Interrupt Latch Trigger Selection Register */
-#define HW_IRQLHGPA		0xD0	/* R GPIO Port A Interrupt Latch Value */
-#define HW_IRQLHGPB		0xD4	/* R GPIO Port B Interrupt Latch Value */
-#define HW_IRQLHGPC		0xD8	/* R GPIO Port C Interrupt Latch Value */
-#define HW_IRQLHGPD	 	0xDC	/* R GPIO Port D Interrupt Latch Value */
-#define HW_IRQLHGPE		0xE0	/* R GPIO Port E Interrupt Latch Value */
-#define HW_IRQTGSRC0	0xF0	/* R/C IRQ0~3 Trigger Source Indicator GPIO Port A and GPIO Port B */
-#define HW_IRQTGSRC1	0xF4	/* R/C IRQ0~3 Trigger Source Indicator GPIO Port C and GPIO Port D */
-#define HW_IRQTGSRC2	0xF8	/* R/C IRQ0~3 Trigger Source Indicator GPIO Port E */
+#define REG_GPIOA_OMD	0x00	/* R/W GPIO Port A Output Mode Enable */
+#define REG_GPIOA_PUEN	0x04	/* R/W GPIO Port A Pull-up Resistor Enable */
+#define REG_GPIOA_DOUT	0x08	/* R/W GPIO Port A Data Output Value */
+#define REG_GPIOA_PIN	0x0C	/* R GPIO Port A Value */
+#define REG_GPIOB_OMD	0x10	/* R/W GPIO Port B Output Mode Enable */
+#define REG_GPIOB_PUEN	0x14	/* R/W GPIO Port B Pull-up Resistor Enable */
+#define REG_GPIOB_DOUT	0x18	/* R/W GPIO Port B Data Output Value */
+#define REG_GPIOB_PIN	0x1C	/* R GPIO Port B Value */
+#define REG_GPIOC_OMD	0x20	/* R/W GPIO Port C Output Mode Enable */
+#define REG_GPIOC_PUEN	0x24	/* R/W GPIO Port C Pull-up Resistor Enable */
+#define REG_GPIOC_DOUT	0x28	/* R/W GPIO Port C Data Output Value */
+#define REG_GPIOC_PIN	0x2C	/* R GPIO Port C Value */
+#define REG_GPIOD_OMD	0x30	/* R/W GPIO Port D Output Mode Enable */
+#define REG_GPIOD_PUEN	0x34	/* R/W GPIO Port D Pull-up Resistor Enable */
+#define REG_GPIOD_DOUT	0x38	/* R/W GPIO Port D Data Output Value */
+#define REG_GPIOD_PIN	0x3C	/* R GPIO Port D Value */
+#define REG_GPIOE_OMD	0x40	/* R/W GPIO Port E Output Mode Enable */
+#define REG_GPIOE_PUEN	0x44	/* R/W GPIO Port E Pull-up Resistor Enable */
+#define REG_GPIOE_DOUT	0x48	/* R/W GPIO Port E Data Output Value */
+#define REG_GPIOE_PIN	0x4C	/* R GPIO Port E Value */
+#define REG_DBNCECON	0x70	/* R/W External Interrupt De-bounce Control */
+#define REG_IRQSRCGPA	0x80	/* R/W GPIO Port A IRQ Source Grouping */
+#define REG_IRQSRCGPB	0x84	/* R/W GPIO Port B IRQ Source Grouping */
+#define REG_IRQSRCGPC	0x88	/* R/W GPIO Port C IRQ Source Grouping */
+#define REG_IRQSRCGPD	0x8C	/* R/W GPIO Port D IRQ Source Grouping */
+#define REG_IRQSRCGPE	0x90	/* R/W GPIO Port E IRQ Source Grouping */
+#define REG_IRQENGPA	0xA0	/* R/W GPIO Port A Interrupt Enable */
+#define REG_IRQENGPB	0xA4	/* R/W GPIO Port B Interrupt Enable */
+#define REG_IRQENGPC	0xA8	/* R/W GPIO Port C Interrupt Enable */
+#define REG_IRQENGPD	0xAC	/* R/W GPIO Port D Interrupt Enable */
+#define REG_IRQENGPE	0xB0	/* R/W GPIO Port E Interrupt Enable */
+#define REG_IRQLHSEL	0xC0	/* R/W Interrupt Latch Trigger Selection Register */
+#define REG_IRQLHGPA	0xD0	/* R GPIO Port A Interrupt Latch Value */
+#define REG_IRQLHGPB	0xD4	/* R GPIO Port B Interrupt Latch Value */
+#define REG_IRQLHGPC	0xD8	/* R GPIO Port C Interrupt Latch Value */
+#define REG_IRQLHGPD	0xDC	/* R GPIO Port D Interrupt Latch Value */
+#define REG_IRQLHGPE	0xE0	/* R GPIO Port E Interrupt Latch Value */
+#define REG_IRQTGSRC0	0xF0	/* R/C IRQ0~3 Trigger Source Indicator GPIO Port A and GPIO Port B */
+#define REG_IRQTGSRC1	0xF4	/* R/C IRQ0~3 Trigger Source Indicator GPIO Port C and GPIO Port D */
+#define REG_IRQTGSRC2	0xF8	/* R/C IRQ0~3 Trigger Source Indicator GPIO Port E */
 
 /* Each GPIO pin can be mapped to one of four IRQ sources */
 #define GPIO_IRQ_SRC_0	0
@@ -153,7 +152,7 @@ static int n329_pinctrl_gpio_get(struct n329_pinctrl_data *pc,
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = pc->gpio_base + HW_GPIOA_OMD + (bank << 4) + 0x0c;
+	void __iomem *reg = pc->gpio_base + REG_GPIOA_OMD + (bank << 4) + 0x0c;
 
 	/* Return the value of the GPIO pin */
 	return readl(reg) & (1 << pin) ? 1 : 0;
@@ -164,7 +163,7 @@ static void n329_pinctrl_gpio_set(struct n329_pinctrl_data *pc,
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = pc->gpio_base + HW_GPIOA_OMD + (bank << 4) + 0x08;
+	void __iomem *reg = pc->gpio_base + REG_GPIOA_OMD + (bank << 4) + 0x08;
 	unsigned long flags;
 
 	spin_lock_irqsave(&pc->lock, flags);
@@ -199,7 +198,7 @@ static void n329_pinctrl_gpio_set_output(struct n329_pinctrl_data *pc,
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = pc->gpio_base + HW_GPIOA_OMD + (bank << 4);
+	void __iomem *reg = pc->gpio_base + REG_GPIOA_OMD + (bank << 4);
 	unsigned long flags;
 
 	spin_lock_irqsave(&pc->lock, flags);
@@ -215,7 +214,7 @@ static void n329_pinctrl_gpio_set_falling(struct n329_pinctrl_data *pc,
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = pc->gpio_base + HW_IRQENGPA + (bank << 2);
+	void __iomem *reg = pc->gpio_base + REG_IRQENGPA + (bank << 2);
 	unsigned long flags;
 
 	spin_lock_irqsave(&pc->lock, flags);
@@ -235,7 +234,7 @@ static void n329_pinctrl_gpio_set_rising(struct n329_pinctrl_data *pc,
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = pc->gpio_base + HW_IRQENGPA + (bank << 2);
+	void __iomem *reg = pc->gpio_base + REG_IRQENGPA + (bank << 2);
 	unsigned long flags;
 
 	spin_lock_irqsave(&pc->lock, flags);
@@ -255,7 +254,7 @@ static void n329_pinctrl_gpio_reset_trigger(struct n329_pinctrl_data *pc,
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
-	void __iomem *reg = pc->gpio_base + HW_IRQTGSRC0 + ((bank >> 1) << 2);
+	void __iomem *reg = pc->gpio_base + REG_IRQTGSRC0 + ((bank >> 1) << 2);
 
 	/* Determine the bit to clear */
 	unsigned clear = (bank & 0x01) ? (1 << (pin + 16)) : (1 << pin);
@@ -267,7 +266,7 @@ static void n329_pinctrl_gpio_reset_trigger(struct n329_pinctrl_data *pc,
 static unsigned n329_pinctrl_gpio_get_triggers(struct n329_pinctrl_data *pc, 
 				unsigned bank)
 {
-	void __iomem *reg = pc->gpio_base + HW_IRQTGSRC0 + ((bank >> 1) << 2);
+	void __iomem *reg = pc->gpio_base + REG_IRQTGSRC0 + ((bank >> 1) << 2);
 	unsigned trigger;
 
 	/* Get the trigger source bits for this bank */
@@ -294,7 +293,7 @@ static int n329_pinctrl_mux_select_gpio(struct n329_pinctrl_data *pc,
 		goto err;
 
 	/* Mux register address */
-	reg = pc->gcr_base + HW_GCR_GPAFUN + (bank << 2);
+	reg = pc->gcr_base + REG_GCR_GPAFUN + (bank << 2);
 
 	spin_lock_irqsave(&pc->lock, flags);
 
@@ -315,7 +314,7 @@ static unsigned n329_pinctrl_get_irq_source(struct n329_pinctrl_data *pc,
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
 	unsigned shift = (1 << pin);
-	void __iomem *reg = pc->gpio_base + HW_IRQSRCGPA + (bank << 2);
+	void __iomem *reg = pc->gpio_base + REG_IRQSRCGPA + (bank << 2);
 
 	/* Return the irq index for the GPIO pin */
 	unsigned irq_src = (int) (readl(reg) >> shift) & 0x03;
@@ -332,7 +331,7 @@ static void n329_pinctrl_set_irq_source(struct n329_pinctrl_data *pc,
 	unsigned shift = (1 << pin);
 	unsigned long flags;
 	u32 val;
-	void __iomem *reg = pc->gpio_base + HW_IRQSRCGPA + (bank << 2);
+	void __iomem *reg = pc->gpio_base + REG_IRQSRCGPA + (bank << 2);
 
 	spin_lock_irqsave(&pc->lock, flags);
 
@@ -360,25 +359,6 @@ static int n329_pinctrl_irq_to_irq_source(struct n329_pinctrl_data *pc,
 
 	return -1;
 }
-
-#if 0
-static int n329_pinctrl_gpio_request(struct gpio_chip *gc, 
-				unsigned offset)
-{
-	return pinctrl_request_gpio(offset);
-}
-
-static void n329_pinctrl_gpio_free(struct gpio_chip *gc, 
-				unsigned offset)
-{
-	struct n329_pinctrl_data *pc = to_n329_pinctrl_data(gc);
-	unsigned pinid = n329_offset_to_pinid(offset);
-
-	pinctrl_free_gpio(offset);
-	n329_pinctrl_gpio_set_rising(pc, pinid, 0);
-	n329_pinctrl_gpio_set_falling(pc, pinid, 0);
-}
-#endif
 
 static int n329_pinctrl_gpio_get_value(struct gpio_chip *gc, 
 				unsigned offset)
@@ -773,7 +753,7 @@ static int n329_pinctrl_enable(struct pinctrl_dev *pctldev,
 	for (i = 0; i < g->npins; i++) {
 		bank = PINID_TO_BANK(g->pins[i]);
 		pin = PINID_TO_PIN(g->pins[i]);
-		reg = pc->gcr_base + HW_GCR_GPAFUN + (bank << 2);
+		reg = pc->gcr_base + REG_GCR_GPAFUN + (bank << 2);
 		shift = pin << 1;
 
 		val = readl(reg);
@@ -841,9 +821,11 @@ static int n329_pinconf_group_set(struct pinctrl_dev *pctldev,
 				reg += (bank * 0x10) + 0x04;
 				shift = pin;
 				if (pull)
-					writel(readl(reg) | (1 << shift), reg);
+					writel(readl(reg) | 
+						(1 << shift), reg);
 				else
-					writel(readl(reg) & ~(1 << shift), reg);
+					writel(readl(reg) & 
+						~(1 << shift), reg);
 			}
 		}
 
@@ -1099,10 +1081,6 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	pc->gc.ngpio = pc->soc->npins;
 	pc->gc.owner = THIS_MODULE;
 
-#if 0
-	pc->gc.request = n329_pinctrl_gpio_request;
-	pc->gc.free = n329_pinctrl_gpio_free;
-#endif
 	pc->gc.direction_input = n329_pinctrl_gpio_dir_in;
 	pc->gc.direction_output = n329_pinctrl_gpio_dir_out;
 	pc->gc.get = n329_pinctrl_gpio_get_value;
@@ -1120,7 +1098,7 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 
 	/* Create an IRQ domain for the GPIO pins */
 	pc->domain = irq_domain_add_linear(gp, pc->soc->npins, 
-									  &irq_domain_simple_ops, NULL);
+				&irq_domain_simple_ops, NULL);
 	if (!pc->domain) {
 		ret = -ENODEV;
 		goto err_unmapio;
@@ -1143,10 +1121,14 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	pc->hw_irq1 = irq_of_parse_and_map(gp, 1);
 	pc->hw_irq2 = irq_of_parse_and_map(gp, 2);
 	pc->hw_irq3 = irq_of_parse_and_map(gp, 3);
-	request_irq(pc->hw_irq0, n329_pinctrl_gpio_interrupt, 0, dev_name(pc->dev), pc);
-	request_irq(pc->hw_irq1, n329_pinctrl_gpio_interrupt, 0, dev_name(pc->dev), pc);
-	request_irq(pc->hw_irq2, n329_pinctrl_gpio_interrupt, 0, dev_name(pc->dev), pc);
-	request_irq(pc->hw_irq3, n329_pinctrl_gpio_interrupt, 0, dev_name(pc->dev), pc);
+	request_irq(pc->hw_irq0, n329_pinctrl_gpio_interrupt, 0, 
+			dev_name(pc->dev), pc);
+	request_irq(pc->hw_irq1, n329_pinctrl_gpio_interrupt, 0, 
+			dev_name(pc->dev), pc);
+	request_irq(pc->hw_irq2, n329_pinctrl_gpio_interrupt, 0, 
+			dev_name(pc->dev), pc);
+	request_irq(pc->hw_irq3, n329_pinctrl_gpio_interrupt, 0, 
+			dev_name(pc->dev), pc);
 
 	/* Add pin control */
 	n329_pinctrl_desc.pins = pc->soc->pins;

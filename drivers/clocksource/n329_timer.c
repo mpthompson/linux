@@ -18,22 +18,22 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
-#define HW_TMR_TCSR0	0x00	/* R/W Timer Control and Status Register 0 */
-#define HW_TMR_TCSR1	0x04	/* R/W Timer Control and Status Register 1 */
-#define HW_TMR_TICR0	0x08	/* R/W Timer Initial Control Register 0 */
-#define HW_TMR_TICR1	0x0C	/* R/W Timer Initial Control Register 1 */
-#define HW_TMR_TDR0		0x10	/* R Timer Data Register 0 */
-#define HW_TMR_TDR1		0x14	/* R Timer Data Register 1 */
-#define HW_TMR_TISR		0x18	/* R/W Timer Interrupt Status Register */
-#define HW_TMR_WTCR		0x1C	/* R/W Watchdog Timer Control Register */
+#define REG_TMR_TCSR0	0x00	/* R/W Timer Control and Status Register 0 */
+#define REG_TMR_TCSR1	0x04	/* R/W Timer Control and Status Register 1 */
+#define REG_TMR_TICR0	0x08	/* R/W Timer Initial Control Register 0 */
+#define REG_TMR_TICR1	0x0C	/* R/W Timer Initial Control Register 1 */
+#define REG_TMR_TDR0	0x10	/* R Timer Data Register 0 */
+#define REG_TMR_TDR1	0x14	/* R Timer Data Register 1 */
+#define REG_TMR_TISR	0x18	/* R/W Timer Interrupt Status Register */
+#define REG_TMR_WTCR	0x1C	/* R/W Watchdog Timer Control Register */
 
-#define TMR_COUNTEN		(0x01 << 30)
-#define TMR_INTEN		(0x01 << 29)
-#define TMR_PERIODIC	(0x01 << 27)
-#define TMR_ONESHOT		(0x00 << 27)
-#define TMR_CRST		(0x01 << 26)
-#define TMR_CACT		(0x01 << 25)
-#define TMR_TDREN		(0x01 << 16)
+#define TMR_COUNTEN	BIT(30)
+#define TMR_INTEN	BIT(29)
+#define TMR_PERIODIC	BIT(27)
+#define TMR_ONESHOT	BIT(27)
+#define TMR_CRST	BIT(26)
+#define TMR_CACT	BIT(25)
+#define TMR_TDREN	BIT(16)
 
 static void __iomem *tmr_base;
 static unsigned int clock_event_rate;
@@ -46,7 +46,7 @@ static irqreturn_t n329_timer0_interrupt(int irq, void *dev_id)
 	struct clock_event_device *evt = dev_id;
 
 	/* Clear timer0 interrupt flag. */
-	__raw_writel(0x01, tmr_base + HW_TMR_TISR);
+	__raw_writel(0x01, tmr_base + REG_TMR_TISR);
 
 	/* Handle the scheduled event. */
 	evt->event_handler(evt);
@@ -84,11 +84,11 @@ static void n329_set_mode(enum clock_event_mode mode,
 	/* Remember timer mode */
 	n329_clockevent_mode = mode;
 
-	val = __raw_readl(tmr_base + HW_TMR_TCSR0);
+	val = __raw_readl(tmr_base + REG_TMR_TCSR0);
 
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
-		__raw_writel(clock_event_rate / HZ, tmr_base + HW_TMR_TICR0);
+		__raw_writel(clock_event_rate / HZ, tmr_base + REG_TMR_TICR0);
 		val = TMR_COUNTEN | TMR_INTEN | TMR_PERIODIC | TMR_TDREN;
 		val |= clock_event_prescale;
 		break;
@@ -105,7 +105,7 @@ static void n329_set_mode(enum clock_event_mode mode,
 		break;
 	}
 
-	__raw_writel(val, tmr_base + HW_TMR_TCSR0);
+	__raw_writel(val, tmr_base + REG_TMR_TCSR0);
 }
 
 static int n329_set_next_event(unsigned long evt,
@@ -114,13 +114,13 @@ static int n329_set_next_event(unsigned long evt,
 	unsigned int val;
 
 	/* Set the event count */
-	__raw_writel(evt, tmr_base + HW_TMR_TICR0);
+	__raw_writel(evt, tmr_base + REG_TMR_TICR0);
 
 	/* Enable the counter and interrupt */
-	val = __raw_readl(tmr_base + HW_TMR_TCSR0);
+	val = __raw_readl(tmr_base + REG_TMR_TCSR0);
 	val &= ~0xff;
 	val |= TMR_COUNTEN | TMR_INTEN | clock_event_prescale;
-	__raw_writel(val, tmr_base + HW_TMR_TCSR0);
+	__raw_writel(val, tmr_base + REG_TMR_TCSR0);
 
 	return 0;
 }
@@ -164,8 +164,8 @@ static void __init n329_clockevents_init(struct device_node *np)
 	clock_event_rate /= clock_event_prescale + 1;
 
 	/* Clear the timer and enable interrupt */
-	__raw_writel(0x1, tmr_base + HW_TMR_TISR);
-	__raw_writel(0x0, tmr_base + HW_TMR_TCSR0);
+	__raw_writel(0x1, tmr_base + REG_TMR_TISR);
+	__raw_writel(0x0, tmr_base + REG_TMR_TCSR0);
 
 	/* Make irqs happen */
 	irq = irq_of_parse_and_map(np, 0);
@@ -174,7 +174,7 @@ static void __init n329_clockevents_init(struct device_node *np)
 	/* Configure and register a clock event device */
 	n329_clockevent_device.cpumask = cpumask_of(0);
 	clockevents_config_and_register(&n329_clockevent_device,
-					clock_event_rate, 0xf, 0xffffffff);
+			clock_event_rate, 0xf, 0xffffffff);
 }
 
 static cycle_t n329_get_cycles(struct clocksource *cs)
@@ -183,14 +183,14 @@ static cycle_t n329_get_cycles(struct clocksource *cs)
 	unsigned int cnt;
 
 	/* Suspend counting while reading the counter value -- ugh!!! */
-	val = __raw_readl(tmr_base + HW_TMR_TCSR1);
-	__raw_writel(val & ~TMR_COUNTEN, tmr_base + HW_TMR_TCSR1);
+	val = __raw_readl(tmr_base + REG_TMR_TCSR1);
+	__raw_writel(val & ~TMR_COUNTEN, tmr_base + REG_TMR_TCSR1);
 
 	/* Get the counter value */
-	cnt = __raw_readl(tmr_base + HW_TMR_TDR1);
+	cnt = __raw_readl(tmr_base + REG_TMR_TDR1);
 
 	/* Now resume counting again */
-	__raw_writel(val | TMR_COUNTEN, tmr_base + HW_TMR_TCSR1);
+	__raw_writel(val | TMR_COUNTEN, tmr_base + REG_TMR_TCSR1);
 
 	return cnt;
 }
@@ -232,10 +232,10 @@ static void __init n329_clocksource_init(struct device_node *np)
 	clk_rate /= clk_prescale + 1;
 
 	/* Enable the counter */
-	__raw_writel(0x2, tmr_base + HW_TMR_TISR);
-	__raw_writel(0xffffffff, tmr_base + HW_TMR_TICR1);
+	__raw_writel(0x2, tmr_base + REG_TMR_TISR);
+	__raw_writel(0xffffffff, tmr_base + REG_TMR_TICR1);
 	__raw_writel(TMR_COUNTEN | TMR_PERIODIC | TMR_TDREN |
-				clk_prescale, tmr_base + HW_TMR_TCSR1);
+			clk_prescale, tmr_base + REG_TMR_TCSR1);
 
 	clocksource_register_hz(&clocksource_n329, clk_rate);
 }
