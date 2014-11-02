@@ -83,11 +83,20 @@
 			reg = <0xB1001000 0x1000>;
 		};
 
-		mmc0: sic@B1006000 {
+		mmc0: sd@B1006820 {
 			compatible = "nuvoton,n32905-mmc";
 			reg = <0xB1006000 0x1000>;
 			interrupts = <17>;
 			clocks = <&clks 43>, <&clks 107>;
+			status = "disabled";
+		};
+
+		nand0: nand@B10068A0 {
+			#address-cells = <1>;
+			#size-cells = <1>;
+			compatible = "nuvoton,n329-nand";
+			reg = <0xB1006000 0x1000>;
+			clocks = <&clks 108>, <&clks 107>;
 			status = "disabled";
 		};
 
@@ -176,6 +185,21 @@
 					N32905_PAD_GPE06__SDCMD
 					N32905_PAD_GPE07__SDCLK
 					N32905_PAD_GPA01__SD_CD
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+
+			nand0_pins: nand0-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPD05__NBUSY0
+					N32905_PAD_GPD06__NBUSY1
+					N32905_PAD_GPD08__NWR
+					N32905_PAD_GPD07__NRE
+					N32905_PAD_GPE08__NCS0
+					N32905_PAD_GPE09__NCS1
+					N32905_PAD_GPE10__NALE
+					N32905_PAD_GPE11__NCLE
 				>;
 				nuvoton,pull-up = <N329_PULL_DISABLE>;
 			};
