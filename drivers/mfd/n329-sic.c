@@ -51,7 +51,8 @@ static void n329_sic_reset(struct n329_sic *sic)
 
 int n329_sic_read(struct device *dev, u32 addr)
 {
-	struct n329_sic *sic = to_sic(dev);
+	struct platform_device *pdev = to_platform_device(dev);
+	struct n329_sic *sic = platform_get_drvdata(pdev);
 
 	return sic->read(sic, addr);
 }
@@ -59,7 +60,8 @@ EXPORT_SYMBOL_GPL(n329_sic_read);
 
 void n329_sic_write(struct device *dev, u32 value, u32 addr)
 {
-	struct n329_sic *sic = to_sic(dev);
+	struct platform_device *pdev = to_platform_device(dev);
+	struct n329_sic *sic = platform_get_drvdata(pdev);
 
 	sic->write(sic, value, addr);
 }

@@ -87,13 +87,13 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 			compatible = "nuvoton,n32905-sic";
-			reg = <0xB0000000 0x1000>;
+			reg = <0xB1006000 0x1000>;
 			status = "disabled";
 			ranges;
 
 			mmc0: sd@B1006820 {
 				compatible = "nuvoton,n32905-mmc";
-				reg = <0xB1006000 0x1000>;
+				reg = <0xB1006820 0x40>;
 				interrupts = <17>;
 				clocks = <&clks 43>, <&clks 107>;
 				status = "disabled";
@@ -103,7 +103,7 @@
 				#address-cells = <1>;
 				#size-cells = <1>;
 				compatible = "nuvoton,n32905-nand";
-				reg = <0xB1006000 0x1000>;
+				reg = <0xB10068A0 0x60>;
 				clocks = <&clks 108>, <&clks 107>;
 				status = "disabled";
 			};
