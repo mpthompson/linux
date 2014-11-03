@@ -352,7 +352,7 @@ static void n329_nand_reset(struct n329_nand_host *host)
 static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 		int column, int page_addr)
 {
-	register struct nand_chip *this = mtd->priv;
+	register struct nand_chip *chip = mtd->priv;
 	struct n329_nand_host *host;
 
 	host = container_of(mtd, struct n329_nand_host, mtd);
@@ -425,7 +425,7 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 
 		if (column != -1) {
 			/* Adjust columns for 16 bit buswidth */
-			if (this->options & NAND_BUSWIDTH_16)
+			if (chip->options & NAND_BUSWIDTH_16)
 				column >>= 1;
 
 			n329_nand_writel((unsigned char) column, REG_SMADDR);
@@ -440,7 +440,7 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 			n329_nand_writel((page_addr & 0xff), REG_SMADDR);
 
 			/* One more address cycle for devices > 128MiB */
-			if (this->chipsize >= (64 << 20))
+			if (chip->chipsize >= (64 << 20))
 			{
 				n329_nand_writel((page_addr >> 8 ) & 0xff,
 						REG_SMADDR);
@@ -476,9 +476,9 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 		break;
 
 	case NAND_CMD_RESET:
-		if (this->dev_ready)
+		if (chip->dev_ready)
 			break;
-		udelay(this->chip_delay);
+		udelay(chip->chip_delay);
 		n329_nand_reset(host);
 		break;
 
@@ -507,8 +507,8 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 		}
 
 		/* This applies to read commands */
-		if (!this->dev_ready)
-			udelay(this->chip_delay);
+		if (!chip->dev_ready)
+			udelay(chip->chip_delay);
 
 		break;
 
@@ -521,8 +521,8 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 				printk("check RB error\n");
 		}
 
-		if (!this->dev_ready)
-			udelay(this->chip_delay);
+		if (!chip->dev_ready)
+			udelay(chip->chip_delay);
 
 		break;
 
@@ -530,15 +530,15 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 		/*
 		 * If we don't have access to the busy pin, we apply the given
 		 * command delay */
-		if (!this->dev_ready) {
-			udelay (this->chip_delay);
+		if (!chip->dev_ready) {
+			udelay (chip->chip_delay);
 		}
 		break;
 	}
 
 	up(&fmi_sem);
 
-	/* Apply this short delay always to ensure that we do wait tWB in
+	/* Apply chip short delay always to ensure that we do wait tWB in
 	 * any case on any machine. */
 	ndelay (100);
 }
