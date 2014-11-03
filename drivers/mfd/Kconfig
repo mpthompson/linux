@@ -116,6 +116,23 @@ config MFD_ASIC3
 	  This driver supports the ASIC3 multifunction chip found on many
 	  PDAs (mainly iPAQ and HTC based ones)
 
+config MFD_ASIC3
+	bool "Compaq ASIC3"
+	depends on GPIOLIB && ARM
+	select MFD_CORE
+	 ---help---
+	  This driver supports the ASIC3 multifunction chip found on many
+	  PDAs (mainly iPAQ and HTC based ones)
+
+config N329_SIC
+	tristate "N329XX SIC support"
+	depends on ARCH_N329
+	help
+	  This enables the driver for the N329XX Storage Interface 
+	  Controller (SIC).  This driver is needed to arbitrate 
+	  use of the DMAC and FMI registers shared between the MMC 
+	  and MTD drivers for the on the N329XX SoC.
+
 config PMIC_DA903X
 	bool "Dialog Semiconductor DA9030/DA9034 PMIC Support"
 	depends on I2C=y

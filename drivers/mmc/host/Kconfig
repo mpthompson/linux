@@ -396,8 +396,8 @@ config MMC_MXS
 
 config MMC_N329
 	tristate "Nuvoton N329 Multimedia Card Interface support"
-	# depends on ARCH_N329 && N329_DMA
 	depends on ARCH_N329
+	select N329_SIC
 	help
 	  This selects the Nuvoton SSP MMC controller found on N329 based
 	  platforms.

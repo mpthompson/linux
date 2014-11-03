@@ -33,9 +33,11 @@
 #include <linux/regulator/consumer.h>
 #include <linux/module.h>
 #include <linux/stmp_device.h>
+#include <linux/mfd/n329-sic.h>
 
 #define DRIVER_NAME	"n329-mmc"
 
+#if 0
 #define BITS(start,end)		((0xffffffff >> (31 - start)) & (0xffffffff << end))
 
 /* Serial Interface Controller (SIC) Registers */
@@ -123,6 +125,7 @@
 #define REG_SDRSP1		(0x834)   	/* SD receive response token register 1 */
 #define REG_SDBLEN		(0x838)   	/* SD block length register */
 #define REG_SDTMOUT 		(0x83c)   	/* SD block length register */
+#endif
 
 #define MCI_BLKSIZE         	512
 #define MCI_MAXBLKSIZE      	4096

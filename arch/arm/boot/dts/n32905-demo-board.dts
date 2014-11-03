@@ -24,11 +24,15 @@
 	compatible = "nuvoton,n32905-demo-board", "nuvoton,n32905", "nuvoton,n329";
 
 	ahb@B0000000 {
-		mmc0: sd@B1006820 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&mmc0_pins &mmc0_wp_pin>;
-			gpios = <&gpio 0 0>;
+		sic@B1006000 {
 			status = "okay";
+
+			mmc0: sd@B1006820 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&mmc0_pins &mmc0_wp_pin>;
+				gpios = <&gpio 0 0>;
+				status = "okay";
+			};
 		};
 
 		uhc@B1009000 {

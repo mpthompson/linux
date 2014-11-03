@@ -97,6 +97,8 @@ obj-$(CONFIG_MCP_UCB1200)	+= ucb1x00-assabet.o
 endif
 obj-$(CONFIG_UCB1400_CORE)	+= ucb1400_core.o
 
+obj-$(CONFIG_N329_SIC)		+= n329-sic.o
+
 obj-$(CONFIG_PMIC_DA903X)	+= da903x.o
 
 obj-$(CONFIG_PMIC_DA9052)	+= da9052-irq.o

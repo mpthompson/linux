@@ -28,11 +28,13 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_mtd.h>
+#include <linux/mfd/n329-sic.h>
 
 #include <asm/mach/flash.h>
 
 #define DRIVER_NAME "n329-nand"
 
+#if 0
 #define BITS(start,end)		((0xffffffff >> (31 - start)) & (0xffffffff << end))
 
 /* Serial Interface Controller (SIC) Registers */
@@ -119,6 +121,7 @@
 #define REG_SMREAREA_CTL 	(0x8BC)  	/* NAND Flash redundnat area control register */
 	#define SMRE_MECC 	BITS(31,16)	/* Mask ECC parity code to NAND during Write Page Data to NAND by DMAC */
 	#define	SMRE_REA128_EXT	BITS(8,0)	/* Redundant area enabled byte number */
+#endif
 
 /* #define OPT_NANDCARD_DETECT */
 #ifdef OPT_NANDCARD_DETECT
@@ -575,13 +578,6 @@ static void n329_nand_enable(struct n329_nand_host *host)
 static const char * const part_probes[] = {
 	"cmdlinepart", "RedBoot", "ofpart", NULL };
 
-static const struct of_device_id n329_nand_dt_ids[] = {
-	{
-		.compatible = "nuvoton,n329-nand"
-	},
-	{ /* sentinel */ }
-};
-
 static int n329_nand_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -681,6 +677,13 @@ static int n329_nand_remove(struct platform_device *pdev)
 
 	return 0;
 }
+
+static const struct of_device_id n329_nand_dt_ids[] = {
+	{
+		.compatible = "nuvoton,n32905-nand"
+	},
+	{ /* sentinel */ }
+};
 
 static struct platform_driver n329_nand_driver = {
 	.driver = {

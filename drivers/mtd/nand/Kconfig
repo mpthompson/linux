@@ -460,6 +460,7 @@ config MTD_NAND_MXC
 config MTD_NAND_N329
 	tristate "N329XX NAND support"
 	depends on ARCH_N329
+	select N329_SIC
 	help
 	  This enables the driver for the NAND flash controller on the
 	  N329XX processors.

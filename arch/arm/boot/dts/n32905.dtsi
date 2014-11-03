@@ -83,21 +83,30 @@
 			reg = <0xB1001000 0x1000>;
 		};
 
-		mmc0: sd@B1006820 {
-			compatible = "nuvoton,n32905-mmc";
-			reg = <0xB1006000 0x1000>;
-			interrupts = <17>;
-			clocks = <&clks 43>, <&clks 107>;
-			status = "disabled";
-		};
-
-		nand0: nand@B10068A0 {
+		sic@B1006000 {
 			#address-cells = <1>;
 			#size-cells = <1>;
-			compatible = "nuvoton,n329-nand";
-			reg = <0xB1006000 0x1000>;
-			clocks = <&clks 108>, <&clks 107>;
+			compatible = "nuvoton,n32905-sic";
+			reg = <0xB0000000 0x1000>;
 			status = "disabled";
+			ranges;
+
+			mmc0: sd@B1006820 {
+				compatible = "nuvoton,n32905-mmc";
+				reg = <0xB1006000 0x1000>;
+				interrupts = <17>;
+				clocks = <&clks 43>, <&clks 107>;
+				status = "disabled";
+			};
+
+			nand0: nand@B10068A0 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				compatible = "nuvoton,n32905-nand";
+				reg = <0xB1006000 0x1000>;
+				clocks = <&clks 108>, <&clks 107>;
+				status = "disabled";
+			};
 		};
 
 		udc@B1008000 {

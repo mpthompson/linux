@@ -30,26 +30,30 @@
 			status = "okay";
 		};
 
-		mmc0: sd@B1006820 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&mmc0_pins &mmc0_wp_pin>;
-			gpios = <&gpio 0 0>;
-			status = "okay";
-		};
-
-		nand0: nand@B10068A0 {
-			pinctrl-names = "default";
-			pinctrl-0 = <&nand0_pins>;
+		sic@B1006000 {
 			status = "okay";
 
-			partition@0 {
-				label = "part1";
-				reg = <0x0 0x100000>;
+			mmc0: sd@B1006820 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&mmc0_pins &mmc0_wp_pin>;
+				gpios = <&gpio 0 0>;
+				status = "okay";
 			};
 
-			partition@100000 {
-				label = "part2";
-				reg = <0x100000 0x7F00000>;
+			nand0: nand@B10068A0 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&nand0_pins>;
+				status = "okay";
+	
+				partition@0 {
+					label = "part1";
+					reg = <0x0 0x100000>;
+				};
+	
+				partition@100000 {
+					label = "part2";
+					reg = <0x100000 0x7F00000>;
+				};
 			};
 		};
 	};
