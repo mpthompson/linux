@@ -47,6 +47,7 @@ struct n329_nand_host {
 	struct mtd_info mtd;
 	struct nand_chip nand;
 	struct device *dev;
+	struct device *sic_dev;
 
 	struct clk *sic_clk;
 	struct clk *nand_clk;
@@ -56,16 +57,24 @@ struct n329_nand_host {
  	int nr_parts;                   /* size of parts */
 };
 
-extern struct semaphore  fmi_sem;
-
 static inline u32 n329_nand_read(struct n329_nand_host *host, u32 addr)
 {
-	return n329_sic_read(host->dev->parent, addr);
+	return n329_sic_read(host->sic_dev, addr);
 }
 
 static inline void n329_nand_write(struct n329_nand_host *host, u32 value, u32 addr)
 {
-	return n329_sic_write(host->dev->parent, value, addr);
+	return n329_sic_write(host->sic_dev, value, addr);
+}
+
+static inline int n329_nand_down(struct n329_nand_host *host)
+{
+	return n329_sic_down(host->sic_dev);
+}
+
+static inline void n329_nand_up(struct n329_nand_host *host)
+{
+	return n329_sic_up(host->sic_dev);
 }
 
 static unsigned char n329_nand_read_byte(struct mtd_info *mtd)
@@ -75,8 +84,7 @@ static unsigned char n329_nand_read_byte(struct mtd_info *mtd)
 
 	host = container_of(mtd, struct n329_nand_host, mtd);
 
-	if (down_interruptible(&fmi_sem))
-	{
+	if (n329_nand_down(host)) {
 		dev_err(host->dev, "%s: semaphore error\n", __func__);
 		return -1;
 	}
@@ -92,7 +100,7 @@ static unsigned char n329_nand_read_byte(struct mtd_info *mtd)
 
 	ret = (unsigned char) n329_nand_read(host, REG_SMDATA);
 
-	up(&fmi_sem);
+	n329_nand_up(host);
 
 	return ret;
 }
@@ -105,8 +113,7 @@ static void n329_nand_read_buf(struct mtd_info *mtd,
 
 	host = container_of(mtd, struct n329_nand_host, mtd);
 
-	if (down_interruptible(&fmi_sem))
-	{
+	if (n329_nand_down(host)) {
 		dev_err(host->dev, "%s: semaphore error\n", __func__);
 		return;
 	}
@@ -123,7 +130,7 @@ static void n329_nand_read_buf(struct mtd_info *mtd,
 	for (i = 0; i < len; i++)
 		buf[i] = (unsigned char) n329_nand_read(host, REG_SMDATA);
 
-	up(&fmi_sem);
+	n329_nand_up(host);
 }
 
 static void n329_nand_write_buf(struct mtd_info *mtd,
@@ -134,8 +141,7 @@ static void n329_nand_write_buf(struct mtd_info *mtd,
 
 	host = container_of(mtd, struct n329_nand_host, mtd);
 
-	if (down_interruptible(&fmi_sem))
-	{
+	if (n329_nand_down(host)) {
 		dev_err(host->dev, "%s: semaphore error\n", __func__);
 		return;
 	}
@@ -152,7 +158,7 @@ static void n329_nand_write_buf(struct mtd_info *mtd,
 	for (i = 0; i < len; i++)
 		n329_nand_write(host, buf[i], REG_SMDATA);
 
-	up(&fmi_sem);
+	n329_nand_up(host);
 }
 
 static void n329_nand_select_chip(struct mtd_info *mtd, int chip)
@@ -161,8 +167,7 @@ static void n329_nand_select_chip(struct mtd_info *mtd, int chip)
 
 	host = container_of(mtd, struct n329_nand_host, mtd);
 
-	if (down_interruptible(&fmi_sem))
-	{
+	if (n329_nand_down(host)) {
 		dev_err(host->dev, "%s: semaphore error\n", __func__);
 		return;
 	}
@@ -176,7 +181,7 @@ static void n329_nand_select_chip(struct mtd_info *mtd, int chip)
 	if ((n329_nand_read(host, REG_FMICR) & FMI_SM_EN) != FMI_SM_EN)
 		n329_nand_write(host, FMI_SM_EN, REG_FMICR);
 
-  	up(&fmi_sem);
+	n329_nand_up(host);
 }
 
 static int n329_nand_check_ready_busy(struct n329_nand_host *host)
@@ -205,9 +210,9 @@ static int n329_nand_devready(struct mtd_info *mtd)
 
 	host = container_of(mtd, struct n329_nand_host, mtd);
 
-	if (down_interruptible(&fmi_sem)) {
+	if (n329_nand_down(host)) {
 		dev_err(host->dev, "%s: semaphore error\n", __func__);
-		return -1;
+		return -ERESTARTSYS;
 	}
 
 #if defined(NANDCARD_NAND)
@@ -221,7 +226,7 @@ static int n329_nand_devready(struct mtd_info *mtd)
 
 	ready = n329_nand_check_ready_busy(host) ? 1 : 0;
 
-	up(&fmi_sem);
+	n329_nand_up(host);
 
 	return ready;
 }
@@ -268,7 +273,7 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 
 	host = container_of(mtd, struct n329_nand_host, mtd);
 
-	if (down_interruptible(&fmi_sem)) {
+	if (n329_nand_down(host)) {
 		dev_err(host->dev, "%s: semaphore error\n", __func__);
 		return;
 	}
@@ -454,7 +459,7 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 		break;
 	}
 
-	up(&fmi_sem);
+	n329_nand_up(host);
 
 	/* Apply chip short delay always to ensure that we do wait tWB in
 	 * any case on any machine. */
@@ -463,11 +468,11 @@ static void n329_nand_command(struct mtd_info *mtd, unsigned command,
 
 static void n329_nand_enable(struct n329_nand_host *host)
 {
-	if (down_interruptible(&fmi_sem)) {
+	if (n329_nand_down(host)) {
 		dev_err(host->dev, "%s: semaphore error\n", __func__);
 		return;
 	}
-	
+
 	spin_lock(&host->lock);
 	
 	n329_nand_write(host, n329_nand_read(host, REG_FMICR) | 
@@ -488,7 +493,7 @@ static void n329_nand_enable(struct n329_nand_host *host)
 
 	spin_unlock(&host->lock);
 
-	up(&fmi_sem);
+	n329_nand_up(host);
 }
 
 static const char * const part_probes[] = {
@@ -509,6 +514,7 @@ static int n329_nand_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	host->dev = &pdev->dev;
+	host->sic_dev = pdev->dev.parent;
 
 	/* Structures must be linked */
 	chip = &host->nand;

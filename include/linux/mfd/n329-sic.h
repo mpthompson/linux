@@ -158,7 +158,12 @@
 	#define SMRE_MECC 	BITS(31,16)	/* Mask ECC parity code to NAND during Write Page Data to NAND by DMAC */
 	#define	SMRE_REA128_EXT	BITS(8,0)	/* Redundant area enabled byte number */
 
+/* SIC register access functions */
 extern int n329_sic_read(struct device *dev, u32 addr);
 extern void n329_sic_write(struct device *dev, u32 value, u32 addr);
+
+/* SIC protection semaphore */
+extern int n329_sic_down(struct device *dev);
+extern void n329_sic_up(struct device *dev);
 
 #endif

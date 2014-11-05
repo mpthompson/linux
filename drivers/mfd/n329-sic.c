@@ -12,6 +12,7 @@
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/semaphore.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -21,7 +22,7 @@
 
 struct n329_sic {
 	void __iomem *base;
-	spinlock_t lock;
+	struct semaphore sem;
 	u32 (*read)(struct n329_sic *, u32 addr);
 	void (*write)(struct n329_sic *, u32 value, u32 addr);
 };
@@ -67,6 +68,24 @@ void n329_sic_write(struct device *dev, u32 value, u32 addr)
 }
 EXPORT_SYMBOL_GPL(n329_sic_write);
 
+int n329_sic_down(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct n329_sic *sic = platform_get_drvdata(pdev);
+
+	return down_interruptible(&sic->sem);
+}
+EXPORT_SYMBOL_GPL(n329_sic_down);
+
+void n329_sic_up(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct n329_sic *sic = platform_get_drvdata(pdev);
+
+	up(&sic->sem);
+}
+EXPORT_SYMBOL_GPL(n329_sic_up);
+
 static int n329_sic_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -84,10 +103,10 @@ static int n329_sic_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, sic);
 
+ 	sema_init(&sic->sem, 1);
+ 
 	sic->read = n329_sic_read_reg;
 	sic->write = n329_sic_write_reg;
-
-	spin_lock_init(&sic->lock);
 
 	n329_sic_reset(sic);
 

@@ -46,6 +46,7 @@ struct n329_mmc_host {
 	struct mmc_command *cmd;
 	struct mmc_data	*data;
 	struct device *dev;
+	struct device *sic_dev;
 
 	dma_addr_t physical_address;
 	unsigned *buffer;
@@ -62,9 +63,6 @@ struct n329_mmc_host {
 	struct clk *sic_clk;
 };
 
-extern struct semaphore  fmi_sem;
-extern struct semaphore  dmac_sem;
-
 extern unsigned long n329_clocks_config_sd(unsigned long rate);
 
 static void n329_mmc_start_cmd(struct n329_mmc_host *host,
@@ -72,13 +70,23 @@ static void n329_mmc_start_cmd(struct n329_mmc_host *host,
 
 static inline u32 n329_mmc_read(struct n329_mmc_host *host, u32 addr)
 {
-	return n329_sic_read(host->dev->parent, addr);
+	return n329_sic_read(host->sic_dev, addr);
 }
 
 static inline void n329_mmc_write(struct n329_mmc_host *host, 
 			u32 value, u32 addr)
 {
-	return n329_sic_write(host->dev->parent, value, addr);
+	return n329_sic_write(host->sic_dev, value, addr);
+}
+
+static inline int n329_mmc_down(struct n329_mmc_host *host)
+{
+	return n329_sic_down(host->sic_dev);
+}
+
+static inline void n329_mmc_up(struct n329_mmc_host *host)
+{
+	return n329_sic_up(host->sic_dev);
 }
 
 static irqreturn_t n329_mmc_irq(int irq, void *devid)
@@ -157,10 +165,9 @@ static int n329_mmc_reset(struct n329_mmc_host *host)
 {
 	unsigned error;
 
-	/* Hold the FMI semaphore for the following operations */
-    	error = down_interruptible(&fmi_sem);
-	if (error)
-	        return error;
+	/* Hold the SIC semaphore for the following operations */
+    	if (n329_mmc_down(host))
+    		return -ERESTARTSYS;
 
 	/* Enable DMAC engine */
 	n329_mmc_write(host, n329_mmc_read(host, REG_DMACCSR) |
@@ -193,8 +200,8 @@ static int n329_mmc_reset(struct n329_mmc_host *host)
 	n329_mmc_write(host, (n329_mmc_read(host, REG_SDCR) & ~SDCR_BLKCNT) |
 				0x00010000, REG_SDCR);
 
-	/* Release the FMI semaphore */
-	up(&fmi_sem);
+	/* Release the SIC semaphore */
+    	n329_mmc_up(host);
 
 	return 0;
 }
@@ -588,16 +595,17 @@ static void n329_mmc_bc(struct n329_mmc_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
 
-	/* Hold the FMI semaphore for the whole SD command */
-    	cmd->error = down_interruptible(&fmi_sem);
-	if (cmd->error)
-	        return;
+	/* Hold the SIC semaphore for the whole SD command */
+    	if (n329_mmc_down(host)) {
+    		cmd->error -ERESTARTSYS;
+    		return;
+	}
 
 	/* Perform a command which should have no response */
 	cmd->error = n329_mmc_do_command(host);
 
-	/* Release the FMI semaphore */
-	up(&fmi_sem);
+	/* Release the SIC semaphore */
+    	n329_mmc_up(host);
 
 	/* The request is done */
 	mmc_request_done(host->mmc, host->mrq);
@@ -610,16 +618,17 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
 
-	/* Hold the FMI semaphore for the whole SD command */
-    	cmd->error = down_interruptible(&fmi_sem);
-	if (cmd->error)
-	        return;
+	/* Hold the SIC semaphore for the whole SD command */
+    	if (n329_mmc_down(host)) {
+    		cmd->error -ERESTARTSYS;
+    		return;
+	}
 
 	/* Perform a command which should include a response */
 	cmd->error = n329_mmc_do_command(host);
 
-	/* Release the FMI semaphore */
-	up(&fmi_sem);
+	/* Release the SIC semaphore */
+    	n329_mmc_up(host);
 
 	/* The request is done */
 	mmc_request_done(host->mmc, host->mrq);
@@ -640,10 +649,11 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 		return;
 	}
 
-	/* Hold the FMI semaphore for the whole SD command */
-    	cmd->error = down_interruptible(&fmi_sem);
-	if (cmd->error)
-	        return;
+	/* Hold the SIC semaphore for the whole SD command */
+    	if (n329_mmc_down(host)) {
+    		cmd->error -ERESTARTSYS;
+    		return;
+	}
 
 	/* Initialize the data transferred */
 	data->bytes_xfered = 0;
@@ -656,8 +666,8 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 		data->error = n329_mmc_do_transfer(host);
 	}
 
-	/* Release the FMI semaphore */
-	up(&fmi_sem);
+	/* Release the SIC semaphore */
+    	n329_mmc_up(host);
 
 	/* Do a stop command? */
 	if (!cmd->error && host->mrq->stop)
@@ -717,9 +727,10 @@ static int n329_mmc_get_cd(struct mmc_host *mmc)
 	struct n329_mmc_host *host = mmc_priv(mmc);
 	int present;
 
-	/* Hold the FMI semaphore for the whole SD command */
-    	if (down_interruptible(&fmi_sem))
-	        return 0;
+	/* Hold the SIC semaphore for the whole SD command */
+    	if (n329_mmc_down(host)) {
+    		return 0;
+	}
 
 	/* Make sure SD functionality is enabled */
 	if (n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
@@ -732,7 +743,7 @@ static int n329_mmc_get_cd(struct mmc_host *mmc)
 	dev_dbg(mmc_dev(host->mmc), "%s: present=%d\n", __func__,
 				(int) present);
 
-	up(&fmi_sem);
+    	n329_mmc_up(host);
 
 	return present;
 }
@@ -754,8 +765,8 @@ static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	dev_dbg(mmc_dev(host->mmc), "%s: clock=%d\n", __func__,
 			(int) ios->clock);
 
-	if (down_interruptible(&fmi_sem))
-		return;
+    	if (n329_mmc_down(host))
+    		return;
 
 	if (ios->bus_width == MMC_BUS_WIDTH_8) {
 		dev_err(mmc_dev(host->mmc), "Unsupported bus width: %d\n",
@@ -783,7 +794,7 @@ static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		while (n329_mmc_read(host, REG_SDCR) & SDCR_74CLK_OE);
 	}
 
-	up(&fmi_sem);
+    	n329_mmc_up(host);
 }
 
 static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
@@ -792,8 +803,8 @@ static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	unsigned long flags;
 	u32 ier;
 
-	if (down_interruptible(&fmi_sem))
-		return;
+    	if (n329_mmc_down(host))
+    		return;
 
 	spin_lock_irqsave(&host->lock, flags);
 
@@ -812,7 +823,7 @@ static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 
 	spin_unlock_irqrestore(&host->lock, flags);
 
-	up(&fmi_sem);
+    	n329_mmc_up(host);
 }
 
 static const struct mmc_host_ops n329_mmc_ops = {
@@ -860,6 +871,7 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	host->cmd = NULL;
 	host->data = NULL;
 	host->dev = &pdev->dev;
+	host->sic_dev = pdev->dev.parent;
 
 	host->bus_width = 0;
 	host->sdio_irq_en = 0;
