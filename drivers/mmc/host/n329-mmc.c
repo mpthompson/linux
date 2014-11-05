@@ -10,8 +10,6 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/ioport.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
@@ -23,109 +21,13 @@
 #include <linux/dmaengine.h>
 #include <linux/highmem.h>
 #include <linux/clk.h>
-#include <linux/err.h>
-#include <linux/completion.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sdio.h>
-#include <linux/mmc/slot-gpio.h>
-#include <linux/gpio.h>
-#include <linux/regulator/consumer.h>
 #include <linux/module.h>
-#include <linux/stmp_device.h>
 #include <linux/mfd/n329-sic.h>
 
 #define DRIVER_NAME	"n329-mmc"
-
-#if 0
-#define BITS(start,end)		((0xffffffff >> (31 - start)) & (0xffffffff << end))
-
-/* Serial Interface Controller (SIC) Registers */
-#define REG_FB_0		(0x000)		/* Shared Buffer (FIFO) */
-
-#define	REG_DMACCSR		(0x400)		/* DMAC Control and Status Register */
-	#define	FMI_BUSY	BIT(9)		/* FMI DMA transfer is in progress */
-	#define SG_EN		BIT(3)		/* DMAC Scatter-gather function enable */
-	#define DMAC_SWRST	BIT(1)		/* DMAC software reset enable */
-	#define DMAC_EN		BIT(0)		/* DMAC enable */
-
-#define REG_DMACSAR		(0x408)		/* DMAC Transfer Starting Address Register */
-#define REG_DMACBCR		(0x40C)		/* DMAC Transfer Byte Count Register */
-#define REG_DMACIER		(0x410)		/* DMAC Interrupt Enable Register */
-	#define	WEOT_IE		BIT(1)		/* Wrong EOT encounterred interrupt enable */
-	#define TABORT_IE	BIT(0)		/* DMA R/W target abort interrupt enable */
-
-#define REG_DMACISR		(0x414)		/* DMAC Interrupt Status Register */
-	#define	WEOT_IF		BIT(1)		/* Wrong EOT encounterred interrupt flag */
-	#define TABORT_IF	BIT(0)		/* DMA R/W target abort interrupt flag */
-
-/* Flash Memory Card Interface Registers */
-#define REG_FMICR		(0x800)		/* FMI Control Register */
-	#define	FMI_SM_EN	BIT(3)		/* Enable FMI SM function */
-	#define FMI_SD_EN	BIT(1)		/* Enable FMI SD function */
-	#define FMI_SWRST	BIT(0)		/* Enable FMI software reset */
-
-#define REG_FMIIER		(0x804)   	/* FMI DMA transfer starting address register */
-	#define	FMI_DAT_IE	BIT(0)		/* Enable DMAC READ/WRITE targe abort interrupt generation */
-
-#define REG_FMIISR		(0x808)   	/* FMI DMA byte count register */
-	#define	FMI_DAT_IF	BIT(0)		/* DMAC READ/WRITE targe abort interrupt flag register */
-
-/* Secure Digital Registers */
-#define REG_SDCR		(0x820)   	/* SD Control Register */
-	#define	SDCR_CLK_KEEP1	BIT(31)		/* SD-1 clock keep control */
-	#define	SDCR_SDPORT	BITS(30,29)	/* SD port select */
-	#define	SDCR_SDPORT_0	0		/* SD-0 port selected */
-	#define	SDCR_SDPORT_1	BIT(29)		/* SD-1 port selected */
-	#define	SDCR_SDPORT_2	BIT(30)		/* SD-2 port selected */
-	#define	SDCR_CLK_KEEP2	BIT(28)		/* SD-1 clock keep control */
-	#define	SDCR_SDNWR	BITS(27,24)	/* Nwr paramter for block write operation */
-	#define SDCR_BLKCNT	BITS(23,16)	/* Block count to be transferred or received */
-	#define	SDCR_DBW	BIT(15)		/* SD data bus width selection */
-	#define	SDCR_SWRST	BIT(14)		/* Enable SD software reset */
-	#define	SDCR_CMD_CODE	BITS(13,8)	/* SD command code */
-	#define	SDCR_CLK_KEEP	BIT(7)		/* SD clock enable */
-	#define SDCR_8CLK_OE	BIT(6)		/* 8 clock cycles output enable */
-	#define SDCR_74CLK_OE	BIT(5)		/* 74 clock cycle output enable */
-	#define SDCR_R2_EN	BIT(4)		/* Response R2 input enable */
-	#define SDCR_DO_EN	BIT(3)		/* Data output enable */
-	#define SDCR_DI_EN	BIT(2)		/* Data input enable */
-	#define SDCR_RI_EN	BIT(1)		/* Response input enable */
-	#define SDCR_CO_EN	BIT(0)		/* Command output enable */
-
-#define REG_SDARG 		(0x824)   	/* SD command argument register */
-
-#define REG_SDIER		(0x828)   	/* SD interrupt enable register */
-	#define	SDIER_CDSRC	BIT(30)		/* SD card detection source selection: SD-DAT3 or GPIO */
-	#define	SDIER_R1B_IEN	BIT(24)		/* R1b interrupt enable */
-	#define	SDIER_WKUP_EN	BIT(14)		/* SDIO wake-up signal generating enable */
-	#define	SDIER_DITO_IEN	BIT(13)		/* SD data input timeout interrupt enable */
-	#define	SDIER_RITO_IEN	BIT(12)		/* SD response input timeout interrupt enable */
-	#define SDIER_SDIO_IEN	BIT(10)		/* SDIO interrupt status enable (SDIO issue interrupt via DAT[1] */
-	#define SDIER_CD_IEN	BIT(8)		/* CD# interrupt status enable */
-	#define SDIER_CRC_IEN	BIT(1)		/* CRC-7, CRC-16 and CRC status error interrupt enable */
-	#define SDIER_BLKD_IEN	BIT(0)		/* Block transfer done interrupt interrupt enable */
-
-#define REG_SDISR		(0x82c)   	/* SD interrupt status register */
-	#define	SDISR_R1B_IF	BIT(24)		/* R1b interrupt flag */
-	#define SDISR_SD_DATA1	BIT(18)		/* SD DAT1 pin status */
-	#define SDISR_CD_Card	BIT(16)		/* CD detection pin status */
-	#define	SDISR_DITO_IF	BIT(13)		/* SD data input timeout interrupt flag */
-	#define	SDISR_RITO_IF	BIT(12)		/* SD response input timeout interrupt flag */
-	#define	SDISR_SDIO_IF	BIT(10)		/* SDIO interrupt flag (SDIO issue interrupt via DAT[1] */
-	#define	SDISR_CD_IF	BIT(8)		/* CD# interrupt flag */
-	#define SDISR_SD_DATA0	BIT(7)		/* SD DATA0 pin status */
-	#define SDISR_CRC	BITS(6,4)	/* CRC status */
-	#define SDISR_CRC_16	BIT(3)		/* CRC-16 Check Result Status */
-	#define SDISR_CRC_7	BIT(2)		/* CRC-7 Check Result Status */
-	#define	SDISR_CRC_IF	BIT(1)		/* CRC-7, CRC-16 and CRC status error interrupt status */
-	#define	SDISR_BLKD_IF	BIT(0)		/* Block transfer done interrupt interrupt status */
-
-#define REG_SDRSP0		(0x830)   	/* SD receive response token register 0 */
-#define REG_SDRSP1		(0x834)   	/* SD receive response token register 1 */
-#define REG_SDBLEN		(0x838)   	/* SD block length register */
-#define REG_SDTMOUT 		(0x83c)   	/* SD block length register */
-#endif
 
 #define MCI_BLKSIZE         	512
 #define MCI_MAXBLKSIZE      	4096
@@ -143,6 +45,7 @@ struct n329_mmc_host {
 	struct mmc_request *mrq;
 	struct mmc_command *cmd;
 	struct mmc_data	*data;
+	struct device *dev;
 
 	dma_addr_t physical_address;
 	unsigned *buffer;
@@ -157,23 +60,25 @@ struct n329_mmc_host {
 	unsigned char bus_width;
 	struct clk *sd_clk;
 	struct clk *sic_clk;
-	void __iomem *base;
 };
+
+extern struct semaphore  fmi_sem;
+extern struct semaphore  dmac_sem;
 
 extern unsigned long n329_clocks_config_sd(unsigned long rate);
 
 static void n329_mmc_start_cmd(struct n329_mmc_host *host,
 			struct mmc_command *cmd);
 
-static inline void n329_mmc_write(struct n329_mmc_host *host,
-			u32 value, u32 addr)
-{
-	__raw_writel(value, host->base + addr);
-}
-
 static inline u32 n329_mmc_read(struct n329_mmc_host *host, u32 addr)
 {
-	return __raw_readl(host->base + addr);
+	return n329_sic_read(host->dev->parent, addr);
+}
+
+static inline void n329_mmc_write(struct n329_mmc_host *host, 
+			u32 value, u32 addr)
+{
+	return n329_sic_write(host->dev->parent, value, addr);
 }
 
 static irqreturn_t n329_mmc_irq(int irq, void *devid)
@@ -250,13 +155,12 @@ static irqreturn_t n329_mmc_irq(int irq, void *devid)
 
 static int n329_mmc_reset(struct n329_mmc_host *host)
 {
-	/* Reset DMAC */
-	n329_mmc_write(host, DMAC_SWRST, REG_DMACCSR);
-	while (n329_mmc_read(host, REG_DMACCSR) & DMAC_SWRST);
+	unsigned error;
 
-	/* Reset FMI */
-	n329_mmc_write(host, FMI_SWRST, REG_FMICR);
-	while (n329_mmc_read(host, REG_FMICR) & FMI_SWRST);
+	/* Hold the FMI semaphore for the following operations */
+    	error = down_interruptible(&fmi_sem);
+	if (error)
+	        return error;
 
 	/* Enable DMAC engine */
 	n329_mmc_write(host, n329_mmc_read(host, REG_DMACCSR) |
@@ -288,6 +192,9 @@ static int n329_mmc_reset(struct n329_mmc_host *host)
 	/* SDCR_BLKCNT = 1 */
 	n329_mmc_write(host, (n329_mmc_read(host, REG_SDCR) & ~SDCR_BLKCNT) |
 				0x00010000, REG_SDCR);
+
+	/* Release the FMI semaphore */
+	up(&fmi_sem);
 
 	return 0;
 }
@@ -681,8 +588,16 @@ static void n329_mmc_bc(struct n329_mmc_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
 
+	/* Hold the FMI semaphore for the whole SD command */
+    	cmd->error = down_interruptible(&fmi_sem);
+	if (cmd->error)
+	        return;
+
 	/* Perform a command which should have no response */
 	cmd->error = n329_mmc_do_command(host);
+
+	/* Release the FMI semaphore */
+	up(&fmi_sem);
 
 	/* The request is done */
 	mmc_request_done(host->mmc, host->mrq);
@@ -695,8 +610,16 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 {
 	struct mmc_command *cmd = host->cmd;
 
+	/* Hold the FMI semaphore for the whole SD command */
+    	cmd->error = down_interruptible(&fmi_sem);
+	if (cmd->error)
+	        return;
+
 	/* Perform a command which should include a response */
 	cmd->error = n329_mmc_do_command(host);
+
+	/* Release the FMI semaphore */
+	up(&fmi_sem);
 
 	/* The request is done */
 	mmc_request_done(host->mmc, host->mrq);
@@ -713,8 +636,14 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 	/* Sanity check that we have data */
 	if (!data) {
 		dev_err(mmc_dev(host->mmc), "Invalid data\n");
+		cmd->error = -EINVAL;
 		return;
 	}
+
+	/* Hold the FMI semaphore for the whole SD command */
+    	cmd->error = down_interruptible(&fmi_sem);
+	if (cmd->error)
+	        return;
 
 	/* Initialize the data transferred */
 	data->bytes_xfered = 0;
@@ -722,10 +651,13 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 	/* Perform a command which should include a response */
 	cmd->error = n329_mmc_do_command(host);
 
+	/* Perform the transfer of data */
 	if (!cmd->error) {
-		/* Perform the transfer of data */
 		data->error = n329_mmc_do_transfer(host);
 	}
+
+	/* Release the FMI semaphore */
+	up(&fmi_sem);
 
 	/* Do a stop command? */
 	if (!cmd->error && host->mrq->stop)
@@ -785,6 +717,10 @@ static int n329_mmc_get_cd(struct mmc_host *mmc)
 	struct n329_mmc_host *host = mmc_priv(mmc);
 	int present;
 
+	/* Hold the FMI semaphore for the whole SD command */
+    	if (down_interruptible(&fmi_sem))
+	        return 0;
+
 	/* Make sure SD functionality is enabled */
 	if (n329_mmc_read(host, REG_FMICR) | FMI_SD_EN)
 		n329_mmc_write(host, n329_mmc_read(host, REG_FMICR) |
@@ -795,6 +731,8 @@ static int n329_mmc_get_cd(struct mmc_host *mmc)
 
 	dev_dbg(mmc_dev(host->mmc), "%s: present=%d\n", __func__,
 				(int) present);
+
+	up(&fmi_sem);
 
 	return present;
 }
@@ -815,6 +753,9 @@ static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	dev_dbg(mmc_dev(host->mmc), "%s: clock=%d\n", __func__,
 			(int) ios->clock);
+
+	if (down_interruptible(&fmi_sem))
+		return;
 
 	if (ios->bus_width == MMC_BUS_WIDTH_8) {
 		dev_err(mmc_dev(host->mmc), "Unsupported bus width: %d\n",
@@ -841,6 +782,8 @@ static void n329_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 						SDCR_74CLK_OE, REG_SDCR);
 		while (n329_mmc_read(host, REG_SDCR) & SDCR_74CLK_OE);
 	}
+
+	up(&fmi_sem);
 }
 
 static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
@@ -849,9 +792,12 @@ static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	unsigned long flags;
 	u32 ier;
 
-	dev_dbg(mmc_dev(host->mmc), "%s: enable=%d\n", __func__, enable);
+	if (down_interruptible(&fmi_sem))
+		return;
 
 	spin_lock_irqsave(&host->lock, flags);
+
+	dev_dbg(mmc_dev(host->mmc), "%s: enable=%d\n", __func__, enable);
 
 	host->sdio_irq_en = enable;
 
@@ -865,6 +811,8 @@ static void n329_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	n329_mmc_write(host, ier, REG_SDIER);
 
 	spin_unlock_irqrestore(&host->lock, flags);
+
+	up(&fmi_sem);
 }
 
 static const struct mmc_host_ops n329_mmc_ops = {
@@ -900,12 +848,7 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct n329_mmc_host *host;
 	struct mmc_host *mmc;
-	struct resource *iores;
 	int ret = 0;
-
-	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!iores)
-		return -EINVAL;
 
 	mmc = mmc_alloc_host(sizeof(struct n329_mmc_host), &pdev->dev);
 	if (!mmc)
@@ -916,17 +859,12 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	host->mrq = NULL;
 	host->cmd = NULL;
 	host->data = NULL;
+	host->dev = &pdev->dev;
 
 	host->bus_width = 0;
 	host->sdio_irq_en = 0;
 
 	spin_lock_init(&host->lock);
-
-	host->base = devm_ioremap_resource(&pdev->dev, iores);
-	if (IS_ERR(host->base)) {
-		ret = PTR_ERR(host->base);
-		goto out_mmc_free;
-	}
 
 	/* Allocate the buffer for DMA transfers */
 	host->buffer = dma_alloc_coherent(&pdev->dev, MCI_BUFSIZE,
