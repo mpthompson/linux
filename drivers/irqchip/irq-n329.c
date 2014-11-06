@@ -22,30 +22,30 @@
 
 #include "irqchip.h"
 
-#define HW_AIC_SCR1					0x0000
-#define HW_AIC_SCR2					0x0004
-#define HW_AIC_SCR3					0x0008
-#define HW_AIC_SCR4					0x000C
-#define HW_AIC_SCR5					0x0010
-#define HW_AIC_SCR6					0x0014
-#define HW_AIC_SCR7					0x0018
-#define HW_AIC_SCR8					0x001C
-#define HW_AIC_IRSR					0x0100
-#define HW_AIC_IASR					0x0104
-#define HW_AIC_ISR					0x0108
-#define HW_AIC_IPER					0x010C
-#define HW_AIC_ISNR					0x0110
-#define HW_AIC_IMR					0x0114
-#define HW_AIC_OISR					0x0118
+#define HW_AIC_SCR1			0x0000
+#define HW_AIC_SCR2			0x0004
+#define HW_AIC_SCR3			0x0008
+#define HW_AIC_SCR4			0x000C
+#define HW_AIC_SCR5			0x0010
+#define HW_AIC_SCR6			0x0014
+#define HW_AIC_SCR7			0x0018
+#define HW_AIC_SCR8			0x001C
+#define HW_AIC_IRSR			0x0100
+#define HW_AIC_IASR			0x0104
+#define HW_AIC_ISR			0x0108
+#define HW_AIC_IPER			0x010C
+#define HW_AIC_ISNR			0x0110
+#define HW_AIC_IMR			0x0114
+#define HW_AIC_OISR			0x0118
 
-#define HW_AIC_MECR					0x0120
-#define HW_AIC_MDCR					0x0124
-#define HW_AIC_SSCR					0x0128
-#define HW_AIC_SCCR					0x012C
-#define HW_AIC_EOSCR				0x0130
-#define HW_AIC_TEST					0x0134
+#define HW_AIC_MECR			0x0120
+#define HW_AIC_MDCR			0x0124
+#define HW_AIC_SSCR			0x0128
+#define HW_AIC_SCCR			0x012C
+#define HW_AIC_EOSCR			0x0130
+#define HW_AIC_TEST			0x0134
 
-#define AIC_NUM_IRQS				32
+#define AIC_NUM_IRQS			32
 
 static void __iomem *aic_base;
 static struct irq_domain *aic_domain;

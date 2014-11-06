@@ -29,6 +29,7 @@
 		serial0 = &uart0;
 		serial1 = &uart1;
 		mmc0 = &mmc0;
+		spi0 = &spi0;
 	};
 
 	memory {
@@ -184,6 +185,32 @@
 				nuvoton,pull-up = <N329_PULL_DISABLE>;
 			};
 
+			spi0_cs0_pins: spi0-cs0-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPD13__SPI0_CS0
+				>;
+				nuvoton,pull-up = <N329_PULL_ENABLE>;
+			};
+
+			spi0_cs1_pins: spi0-cs1-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPD00__SPI1_CS1
+				>;
+				nuvoton,pull-up = <N329_PULL_ENABLE>;
+			};
+
+			spi0_pins: spi0-pins@0 {
+				reg = <0>;
+				nuvoton,pinmux-ids = <
+					N32905_PAD_GPD12__SPI0_CLK
+					N32905_PAD_GPD14__SPI0_DI
+					N32905_PAD_GPD15__SPI0_DO
+				>;
+				nuvoton,pull-up = <N329_PULL_DISABLE>;
+			};
+
 			mmc0_pins: mmc0-pins@0 {
 				reg = <0>;
 				nuvoton,pinmux-ids = <
@@ -252,6 +279,14 @@
 			reg = <0xB8008100 0x100>;
 			interrupts = <24>;
 			clocks = <&clks 70>;
+			status = "disabled";
+		};
+
+		spi0: spims0@B800C000 {
+			reg = <0xB800C000 0x400>;
+			compatible = "nuvoton,n329-spi";
+			interrupts = <20>;
+			clocks = <&clks 120>;
 			status = "disabled";
 		};
 	};

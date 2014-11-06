@@ -94,6 +94,12 @@
 			pinctrl-0 = <&uart1_pins>;
 			status = "okay";
 		};
+
+		spi0: spims0@B800C000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <&spi0_pins &spi0_cs0_pins>;
+			status = "okay";
+		};
 	};
 
 	gpio-leds {
