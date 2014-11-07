@@ -21,10 +21,9 @@
 #include <linux/err.h>
 #include <linux/completion.h>
 #include <linux/gpio.h>
-#include <linux/regulator/consumer.h>
 #include <linux/module.h>
-#include <linux/stmp_device.h>
 #include <linux/spi/spi.h>
+#include <linux/spi/spi_bitbang.h>
 
 #define DRIVER_NAME		"n329-spi"
 
@@ -48,120 +47,542 @@
 #define REG_USI_RX0		(0x10)		/* SPI0 Data receive registers */
 #define REG_USI_TX0		(0x10)		/* SPI0 Data transmit registers */
 
-struct n329_spi {
-	unsigned reserved;
+struct n329_spi_info {
+	unsigned num_cs;
+	unsigned lsb;
+	unsigned txneg;
+	unsigned rxneg;
+	unsigned divider;
+	unsigned sleep;
+	unsigned txnum;
+	unsigned txbitlen;
+	unsigned byte_endin;
+	int bus_num;
+};
+
+struct n329_spi_host {
+	struct spi_bitbang bitbang;
+	struct completion done;
+	void __iomem *regs;
+	int irq;
+	int len;
+	int count;
+	int tx_num;
+	const unsigned char *tx;
+	unsigned char *rx;
+	struct clk *clk;
+	struct spi_master *master;
+	struct device *dev;
+	spinlock_t lock;
+	struct resource *res;
+	struct n329_spi_info *pdata;
+};
+
+static inline struct n329_spi_host *to_host(struct spi_device *sdev)
+{
+	return spi_master_get_devdata(sdev->master);
+}
+
+static void n329_spi_slave_select(struct spi_device *spi, unsigned ssr)
+{
+	struct n329_spi_host *host = to_host(spi);
+	unsigned val;
+	unsigned cs = spi->mode & SPI_CS_HIGH ? 1 : 0;
+	unsigned cpol = spi->mode & SPI_CPOL ? 1 : 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_SSR);
+
+	if (!cs)
+		val &= ~SELECTLEV;
+	else
+		val |= SELECTLEV;
+
+	if (!ssr)
+		val &= ~SELECTSLAVE;
+	else
+		val |= SELECTSLAVE;
+
+	__raw_writel(val, host->regs + REG_USI_SSR);
+
+	val = __raw_readl(host->regs + REG_USI_CNT);
+
+	if (!cpol)
+		val &= ~SELECTPOL;
+	else
+		val |= SELECTPOL;
+
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static void n329_spi_chipselect(struct spi_device *spi, int value)
+{
+	switch (value) {
+	case BITBANG_CS_INACTIVE:
+		n329_spi_slave_select(spi, 0);
+		break;
+
+	case BITBANG_CS_ACTIVE:
+		n329_spi_slave_select(spi, 1);
+		break;
+	}
+}
+
+static void n329_spi_set_txnum(struct n329_spi_host *host, unsigned txnum)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	host->tx_num = txnum;
+
+	val = __raw_readl(host->regs + REG_USI_CNT);
+
+	if (!txnum)
+		val &= ~TXNUM;
+	else
+		val |= txnum << 0x08;
+
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+
+}
+
+static void n329_spi_set_txbitlen(struct n329_spi_host *host, unsigned txbitlen)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_CNT) & ~TXBIT;
+
+	if (txbitlen == 32)
+		txbitlen = 0;
+
+	val |= (txbitlen << 0x03);
+
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static void n329_spi_setup_byte_endin(struct n329_spi_host *host,
+					unsigned endin)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_CNT) & ~BYTEENDIN;
+
+	val |= (endin << 20);
+
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static void n329_spi_gobusy(struct n329_spi_host *host)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_CNT);
+
+	val |= GOBUSY;
+
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static int n329_spi_setup_transfer(struct spi_device *spi,
+				 struct spi_transfer *t)
+{
+	return 0;
+}
+
+static int n329_spi_setup(struct spi_device *spi)
+{
+	return 0;
+}
+
+static inline unsigned hw_txbyte(struct n329_spi_host *host, int count)
+{
+	return host->tx ? host->tx[count] : 0;
+}
+
+static inline unsigned hw_txword(struct n329_spi_host *host, int count)
+{
+	unsigned *p32tmp;
+
+	if (host->tx == 0)
+		return 0;
+	else
+	{
+		p32tmp = (unsigned *)((unsigned )(host->tx) + count);
+		return *p32tmp;
+	}
+}
+
+static int n329_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
+{
+	int i;
+	struct n329_spi_host *host = to_host(spi);
+
+	host->tx = t->tx_buf;
+	host->rx = t->rx_buf;
+	host->len = t->len;
+	host->count = 0;
+
+	//printk("host->len %d 0x%x\n", host->len, host->rx);
+
+	if(host->len < 4)
+	{
+		n329_spi_setup_byte_endin(host, 0);
+		n329_spi_set_txbitlen(host, 8);
+		n329_spi_set_txnum(host, 0);
+		__raw_writel(hw_txbyte(host, 0x0), host->regs + REG_USI_TX0);
+
+	}
+	else
+	{
+		n329_spi_setup_byte_endin(host, 1);
+		n329_spi_set_txbitlen(host, 32);
+
+		if(host->len >= 16)
+		{
+			n329_spi_set_txnum(host, 3);
+			for(i=0;i<4;i++)
+				__raw_writel(hw_txword(host, i * 4), 
+					host->regs + REG_USI_TX0 + i * 4);
+		}
+		else
+		{
+			n329_spi_set_txnum(host, 0);
+			__raw_writel(hw_txword(host, 0x0), 
+					host->regs + REG_USI_TX0);
+		}
+	}
+
+	n329_spi_gobusy(host);
+
+	wait_for_completion(&host->done);
+
+	return host->count;
+}
+
+static irqreturn_t n329_spi_irq(int irq, void *dev)
+{
+	struct n329_spi_host *host = dev;
+	unsigned count = host->count;
+	unsigned status;
+	unsigned val,i;
+	unsigned *p32tmp;
+
+	status = __raw_readl(host->regs + REG_USI_CNT);
+	__raw_writel(status, host->regs + REG_USI_CNT);
+
+	if (status & ENFLG) {
+
+		val = __raw_readl(host->regs + REG_USI_CNT) & BYTEENDIN;
+
+		if(val)
+		{
+			host->count = host->count + (host->tx_num + 1) * 4;
+
+			if (host->rx)
+			{
+				p32tmp = (unsigned *)((unsigned )(host->rx) + count);
+
+				for(i = 0; i < (host->tx_num + 1); i++)
+				{
+					*p32tmp = __raw_readl(host->regs + 
+							REG_USI_TX0 + i * 4);
+					p32tmp++;
+				}
+			}
+
+			count = count + (host->tx_num + 1) * 4;
+
+			if (count < host->len)
+			{
+				if ((count+16) <= host->len)
+				{
+					for(i = 0; i < 4; i++)
+						__raw_writel(hw_txword(host, 
+							(count + i * 4)), 
+							host->regs + REG_USI_TX0 + i * 4);
+				}
+				else if ((count+4) <= host->len)
+				{
+					n329_spi_set_txnum(host, 0);
+					__raw_writel(hw_txword(host, count), 
+							host->regs + REG_USI_TX0);
+				}
+				else
+				{
+					n329_spi_setup_byte_endin(host, 0);
+					n329_spi_set_txbitlen(host, 8);
+					n329_spi_set_txnum(host, 0);
+					__raw_writel(hw_txbyte(host, count), 
+							host->regs + REG_USI_TX0);
+				}
+				n329_spi_gobusy(host);
+			}
+			else
+			{
+				complete(&host->done);
+			}
+		}
+		else
+		{
+			host->count++;
+
+			if (host->rx)
+				host->rx[count] = __raw_readl(host->regs + 
+								REG_USI_RX0);
+			count++;
+
+			if (count < host->len) {
+				__raw_writel(hw_txbyte(host, count), 
+							host->regs + REG_USI_TX0);
+				n329_spi_gobusy(host);
+			} else {
+				complete(&host->done);
+			}
+		}
+
+		return IRQ_HANDLED;
+	}
+
+	complete(&host->done);
+
+	return IRQ_HANDLED;
+}
+
+static void n329_spi_tx_edge(struct n329_spi_host *host, unsigned edge)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_CNT);
+
+	if (edge)
+		val |= TXNEG;
+	else
+		val &= ~TXNEG;
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static void n329_spi_rx_edge(struct n329_spi_host *host, unsigned edge)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_CNT);
+	if (edge)
+		val |= RXNEG;
+	else
+		val &= ~RXNEG;
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static void n329_send_first(struct n329_spi_host *host, unsigned lsb)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_CNT);
+	if (lsb)
+		val |= LSB;
+	else
+		val &= ~LSB;
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static void n329_spi_set_sleep(struct n329_spi_host *host, unsigned sleep)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_CNT);
+	if (sleep)
+		val |= (sleep << 12);
+	else
+		val &= ~(0x0f << 12);
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static void n329_spi_enable_int(struct n329_spi_host *host)
+{
+	unsigned val;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	val = __raw_readl(host->regs + REG_USI_CNT);
+	val |= ENINT;
+	__raw_writel(val, host->regs + REG_USI_CNT);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
+static void n329_spi_set_divider(struct n329_spi_host *host)
+{
+	__raw_writel(host->pdata->divider, host->regs + REG_USI_DIV);
+}
+
+static void n329_spi_init(struct n329_spi_host *host)
+{
+	clk_enable(host->clk);
+
+	// XXX writel(readl(REG_APBIPRST) | SPI0RST, REG_APBIPRST);
+	// XXX writel(readl(REG_APBIPRST) & ~SPI0RST, REG_APBIPRST);
+	spin_lock_init(&host->lock);
+
+	n329_spi_tx_edge(host, host->pdata->txneg);
+	n329_spi_rx_edge(host, host->pdata->rxneg);
+	n329_send_first(host, host->pdata->lsb);
+	n329_spi_set_sleep(host, host->pdata->sleep);
+	n329_spi_set_txbitlen(host, host->pdata->txbitlen);
+	n329_spi_set_txnum(host, host->pdata->txnum);
+	n329_spi_set_divider(host);
+	n329_spi_enable_int(host);
+}
+
+static struct n329_spi_info spi_info = {
+	.num_cs = 1,
+	.lsb = 0,
+	.txneg = 1,
+	.rxneg = 0,
+	.divider = 0,
+	.sleep = 0,
+	.txnum = 0,
+	.txbitlen = 8,
+	.byte_endin = 0,
+	.bus_num = 0,
 };
 
 static int n329_spi_probe(struct platform_device *pdev)
 {
-#if 0
 	struct device_node *np = pdev->dev.of_node;
+	struct n329_spi_host *host;
 	struct spi_master *master;
-	struct n329_spi *spi;
 	struct resource *iores;
-	struct clk *clk;
-	void __iomem *base;
-	int devid, clk_freq;
-	int ret = 0, irq_err;
+	int ret = 0;
 
-	/*
-	 * Default clock speed for the SPI core. 160MHz seems to
-	 * work reasonably well with most SPI flashes, so use this
-	 * as a default. Override with "clock-frequency" DT prop.
-	 */
-	const int clk_freq_default = 160000000;
-
-	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	irq_err = platform_get_irq(pdev, 0);
-	if (irq_err < 0)
-		return irq_err;
-
-	base = devm_ioremap_resource(&pdev->dev, iores);
-	if (IS_ERR(base))
-		return PTR_ERR(base);
-
-	clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(clk))
-		return PTR_ERR(clk);
-
-	devid = (enum mxs_ssp_id) of_id->data;
-	ret = of_property_read_u32(np, "clock-frequency",
-				   &clk_freq);
-	if (ret)
-		clk_freq = clk_freq_default;
-
-	master = spi_alloc_master(&pdev->dev, sizeof(*spi));
+	master = spi_alloc_master(&pdev->dev, sizeof(*host));
 	if (!master)
 		return -ENOMEM;
 
-	master->transfer_one_message = mxs_spi_transfer_one;
-	master->bits_per_word_mask = SPI_BPW_MASK(8);
-	master->mode_bits = SPI_CPOL | SPI_CPHA;
-	master->num_chipselect = 3;
-	master->dev.of_node = np;
-	master->flags = SPI_MASTER_HALF_DUPLEX;
+	host = spi_master_get_devdata(master);
+	memset(host, 0, sizeof(struct n329_spi_host));
 
-	spi = spi_master_get_devdata(master);
-	ssp = &spi->ssp;
-	ssp->dev = &pdev->dev;
-	ssp->clk = clk;
-	ssp->base = base;
-	ssp->devid = devid;
+	platform_set_drvdata(pdev, host);
 
-	init_completion(&spi->c);
+	host->pdata  = &spi_info;
+	host->dev = &pdev->dev;
+	init_completion(&host->done);
 
-	ret = devm_request_irq(&pdev->dev, irq_err, mxs_ssp_irq_handler, 0,
-			       DRIVER_NAME, ssp);
-	if (ret)
-		goto out_master_free;
+	host->master = spi_master_get(master);
+	host->master->mode_bits = SPI_MODE_0;
+	host->master->num_chipselect = host->pdata->num_cs;
+	host->master->bus_num = host->pdata->bus_num;
 
-	ssp->dmach = dma_request_slave_channel(&pdev->dev, "rx-tx");
-	if (!ssp->dmach) {
-		dev_err(ssp->dev, "Failed to request DMA\n");
-		ret = -ENODEV;
+	host->bitbang.master = host->master;
+	host->bitbang.master->setup = n329_spi_setup;
+	host->bitbang.txrx_bufs = n329_spi_txrx_bufs;
+	host->bitbang.chipselect = n329_spi_chipselect;
+	host->bitbang.setup_transfer = n329_spi_setup_transfer;
+
+	host->irq = platform_get_irq(pdev, 0);
+	ret = request_irq(host->irq, n329_spi_irq, 0, pdev->name, host);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to claim IRQ\n");
 		goto out_master_free;
 	}
 
-	ret = clk_prepare_enable(ssp->clk);
-	if (ret)
-		goto out_dma_release;
+	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	host->regs = devm_ioremap_resource(&pdev->dev, iores);
+	if (IS_ERR(host->regs)) {
+		ret = PTR_ERR(host->regs);
+		dev_err(&pdev->dev, "Failed to map registers\n");
+		goto out_irq_free;
+	}
 
-	clk_set_rate(ssp->clk, clk_freq);
+	host->clk = of_clk_get(np, 0);
+	if (IS_ERR(host->clk)) {
+		ret = -ENODEV;
+		dev_err(&pdev->dev, "Failed to get clock\n");
+		goto out_io_free;
+	}
+	clk_prepare_enable(host->clk);
 
-	ret = stmp_reset_block(ssp->base);
-	if (ret)
-		goto out_disable_clk;
+	n329_spi_init(host);
 
-	platform_set_drvdata(pdev, master);
-
-	ret = devm_spi_register_master(&pdev->dev, master);
+	ret = spi_bitbang_start(&host->bitbang);
 	if (ret) {
-		dev_err(&pdev->dev, "Cannot register SPI master, %d\n", ret);
-		goto out_disable_clk;
+		dev_err(&pdev->dev, "Failed to register SPI master\n");
+		goto out_clk_free;
 	}
 
 	return 0;
 
-out_disable_clk:
-	clk_disable_unprepare(ssp->clk);
-out_dma_release:
-	dma_release_channel(ssp->dmach);
+out_clk_free:
+	clk_disable_unprepare(host->clk);
+out_io_free:
+	iounmap(host->regs);
+out_irq_free:
+	free_irq(host->irq, host);
 out_master_free:
 	spi_master_put(master);
 	return ret;
-#endif
-	return 0;
 }
 
 static int n329_spi_remove(struct platform_device *pdev)
 {
-#if 0
-	struct spi_master *master;
-	struct n329_spi *spi;
+	struct n329_spi_host *host;
 
-	master = platform_get_drvdata(pdev);
-	spi = spi_master_get_devdata(master);
-#endif
+	host = platform_get_drvdata(pdev);
+
+	free_irq(host->irq, host);
+
+	spi_unregister_master(host->master);
+	
+	clk_disable_unprepare(host->clk);
+
+	iounmap(host->regs);
+
+	spi_master_put(host->master);
+
+	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }

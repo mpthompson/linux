@@ -500,6 +500,7 @@ config SPI_MXS
 config SPI_N329
 	tristate "Nuvoton N329XX SPI controller"
 	depends on ARCH_N329
+	select SPI_BITBANG
 	help
 	  SPI driver for Nuvoton N329XX devices.
 
