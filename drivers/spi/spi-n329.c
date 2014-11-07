@@ -10,18 +10,12 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/ioport.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
-#include <linux/of_gpio.h>
-#include <linux/platform_device.h>
-#include <linux/delay.h>
-#include <linux/interrupt.h>
 #include <linux/clk.h>
-#include <linux/err.h>
-#include <linux/completion.h>
-#include <linux/gpio.h>
 #include <linux/module.h>
+#include <linux/of_device.h>
+#include <linux/platform_device.h>
+#include <linux/interrupt.h>
+#include <linux/completion.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
 
@@ -511,11 +505,12 @@ static int n329_spi_probe(struct platform_device *pdev)
 	host->dev = &pdev->dev;
 	init_completion(&host->done);
 
-	host->master = spi_master_get(master);
+	host->master = master;
 	host->master->mode_bits = SPI_MODE_0;
 	host->master->num_chipselect = host->pdata->num_cs;
 	host->master->bus_num = host->pdata->bus_num;
-
+        host->master->dev.of_node = np;
+        
 	host->bitbang.master = host->master;
 	host->bitbang.master->setup = n329_spi_setup;
 	host->bitbang.txrx_bufs = n329_spi_txrx_bufs;

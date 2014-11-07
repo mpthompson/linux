@@ -283,6 +283,8 @@
 		};
 
 		spi0: spims0@B800C000 {
+			#address-cells = <1>;
+			#size-cells = <0>;		
 			reg = <0xB800C000 0x400>;
 			compatible = "nuvoton,n329-spi";
 			interrupts = <20>;
