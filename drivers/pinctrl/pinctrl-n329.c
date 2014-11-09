@@ -21,6 +21,7 @@
 #include <linux/gpio.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_address.h>
 #include <linux/pinctrl/machine.h>
 #include <linux/pinctrl/pinconf.h>
@@ -28,17 +29,12 @@
 #include <linux/pinctrl/pinmux.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/n329-gcr.h>
 #include "core.h"
 #include "pinctrl-n329.h"
 
 #define SUFFIX_LEN	4
 #define BADPINID	0xffff
-
-#define REG_GCR_GPAFUN	0x80	/* R/W GPIO A Multi Function Control */
-#define REG_GCR_GPBFUN	0x84	/* R/W GPIO B Multi Function Control */
-#define REG_GCR_GPCFUN	0x88	/* R/W GPIO C Multi Function Control */
-#define REG_GCR_GPDFUN	0x8C	/* R/W GPIO D Multi Function Control */
-#define REG_GCR_GPEFUN	0x90	/* R/W GPIO E Multi Function Control */
 
 #define REG_GPIOA_OMD	0x00	/* R/W GPIO Port A Output Mode Enable */
 #define REG_GPIOA_PUEN	0x04	/* R/W GPIO Port A Pull-up Resistor Enable */
@@ -92,9 +88,9 @@
 
 struct n329_pinctrl_data {
 	struct device *dev;
+	struct device *gcr_dev;
 	struct pinctrl_dev *pctl;
 	struct gpio_chip gc;
-	void __iomem *gcr_base;
 	void __iomem *gpio_base;
 	struct n329_pinctrl_soc_data *soc;
 	struct irq_domain *domain;
@@ -283,8 +279,8 @@ static int n329_pinctrl_mux_select_gpio(struct n329_pinctrl_data *pc,
 {
 	unsigned bank = PINID_TO_BANK(pinid);
 	unsigned pin = PINID_TO_PIN(pinid);
-	unsigned long flags;
-	void __iomem *reg;
+	u32 reg;
+	u32 val;
 
 	/* Sanity checks */
 	if (bank > (N329_BANKS - 1))
@@ -293,14 +289,17 @@ static int n329_pinctrl_mux_select_gpio(struct n329_pinctrl_data *pc,
 		goto err;
 
 	/* Mux register address */
-	reg = pc->gcr_base + REG_GCR_GPAFUN + (bank << 2);
+	reg = REG_GCR_GPAFUN + (bank << 2);
 
-	spin_lock_irqsave(&pc->lock, flags);
+	if (n329_gcr_down(pc->gcr_dev))
+		goto err;
 
-	/* Select the mux to enable gpio function on the indicated pin */
-	writel(readl(reg) & ~(0x3 << (pin << 1)), reg);
+	/* Clear out the bits corresponding to the pin */
+	val = n329_gcr_read(pc->gcr_dev, reg);
+	val &= ~(0x3 << (pin << 1));
+	n329_gcr_write(pc->gcr_dev, val, reg);
 
-	spin_unlock_irqrestore(&pc->lock, flags);
+	n329_gcr_up(pc->gcr_dev);
 
 	return 1;
 	
@@ -747,19 +746,23 @@ static int n329_pinctrl_enable(struct pinctrl_dev *pctldev,
 {
 	struct n329_pinctrl_data *pc = pinctrl_dev_get_drvdata(pctldev);
 	struct n329_group *g = &pc->soc->groups[group];
-	void __iomem *reg;
-	unsigned bank, pin, shift, val, i;
+	unsigned bank, pin, shift, i;
+	u32 reg, val;
 
 	for (i = 0; i < g->npins; i++) {
 		bank = PINID_TO_BANK(g->pins[i]);
 		pin = PINID_TO_PIN(g->pins[i]);
-		reg = pc->gcr_base + REG_GCR_GPAFUN + (bank << 2);
 		shift = pin << 1;
+		reg = REG_GCR_GPAFUN + (bank << 2);
 
-		val = readl(reg);
-		val &= ~(0x3 << shift);
-		val |= (g->muxsel[i] << shift);
-		writel(val, reg);
+		if (!n329_gcr_down(pc->gcr_dev)) {
+			val = n329_gcr_read(pc->gcr_dev, reg);
+			val &= ~(0x3 << shift);
+			val |= (g->muxsel[i] << shift);
+			n329_gcr_write(pc->gcr_dev, val, reg);
+		
+			n329_gcr_up(pc->gcr_dev);
+		}
 	}
 
 	return 0;
@@ -1025,11 +1028,21 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *gp;
+	struct device_node *gcr_node;
+	struct platform_device *gcr_pdev;
 	struct n329_pinctrl_data *pc;
 	struct clk *clk_mux;
 	struct clk *clk_div;
 	struct clk *clk_gate;
 	int pin, ret;
+
+	/* Defer probing until the GCR driver is available */
+	gcr_node = of_parse_phandle(np, "gcr-dev", 0);
+	if (!gcr_node)
+		return -EPROBE_DEFER;
+	gcr_pdev = of_find_device_by_node(gcr_node);
+	if (!gcr_pdev)
+		return -EPROBE_DEFER;
 
 	/* We must have at least one child gpio node */
 	gp = n329_get_first_gpio(pdev);
@@ -1057,13 +1070,13 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	}
 
 	pc->dev = &pdev->dev;
+	pc->gcr_dev = &gcr_pdev->dev;
 	pc->soc = soc;
 
 	spin_lock_init(&pc->lock);
 
 	pc->gpio_base = of_iomap(np, 0);
-	pc->gcr_base = of_iomap(np, 1);
-	if (!pc->gpio_base || !pc->gcr_base) {
+	if (!pc->gpio_base) {
 		ret = -EADDRNOTAVAIL;
 		goto err_free;
 	}
@@ -1145,8 +1158,6 @@ int n329_pinctrl_probe(struct platform_device *pdev,
 	return 0;
 
 err_unmapio:
-	if (pc->gcr_base)
-		iounmap(pc->gcr_base);
 	if (pc->gpio_base)
 		iounmap(pc->gpio_base);
 err_free:
@@ -1161,7 +1172,6 @@ int n329_pinctrl_remove(struct platform_device *pdev)
 	struct n329_pinctrl_data *pc = platform_get_drvdata(pdev);
 
 	pinctrl_unregister(pc->pctl);
-	iounmap(pc->gcr_base);
 
 	return 0;
 }

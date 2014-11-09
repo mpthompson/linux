@@ -509,7 +509,7 @@ static void __init n329_clocks_init(struct device_node *np)
 	WARN_ON(!clkctrl);
 
 	/* Locate the system management control registers */
-	gcr = of_find_compatible_node(NULL, NULL, "nuvoton,gcr");
+	gcr = of_find_compatible_node(NULL, NULL, "nuvoton,n329-gcr");
 	gcrctrl = of_iomap(gcr, 0);
 	WARN_ON(!gcrctrl);
 	of_node_put(gcr);

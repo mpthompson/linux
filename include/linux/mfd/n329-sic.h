@@ -18,7 +18,7 @@
 
 #define BITS(start,end)		((0xffffffff >> (31 - start)) & (0xffffffff << end))
 
-/* Serial Interface Controller (SIC) Registers */
+/* Storage Interface Controller (SIC) Registers */
 #define REG_FB_0		(0x000)		/* Shared Buffer (FIFO) */
 
 #define	REG_DMACCSR		(0x400)		/* DMAC Control and Status Register */

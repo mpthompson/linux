@@ -179,6 +179,15 @@ config TIFM_7XX1
 	  To compile this driver as a module, choose M here: the module will
 	  be called tifm_7xx1.
 
+config N329_GCR
+	tristate "N329XX GCR support"
+	depends on ARCH_N329
+	help
+	  This enables the driver for the N329XX Global Control 
+	  Registers (GCR).  This driver is needed by other drivers
+	  to to arbitrate use of the shared system and global control
+	  registers shared between various drivers on the N329XX SoC.
+
 config ICS932S401
 	tristate "Integrated Circuits ICS932S401"
 	depends on I2C

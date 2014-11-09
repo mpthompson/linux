@@ -60,7 +60,7 @@ static const char __init *n329_get_soc_id(void)
 	struct device_node *np;
 	void __iomem *gcr_base;
 
-	np = of_find_compatible_node(NULL, NULL, "nuvoton,gcr");
+	np = of_find_compatible_node(NULL, NULL, "nuvoton,n329-gcr");
 	gcr_base = of_iomap(np, 0);
 	WARN_ON(!gcr_base);
 

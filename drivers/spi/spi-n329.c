@@ -18,6 +18,7 @@
 #include <linux/completion.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
+#include <linux/n329-gcr.h>
 
 #define DRIVER_NAME		"n329-spi"
 
@@ -67,6 +68,7 @@ struct n329_spi_host {
 	struct clk *clk;
 	struct spi_master *master;
 	struct device *dev;
+	struct device *gcr_dev;
 	spinlock_t lock;
 	struct resource *res;
 	struct n329_spi_info *pdata;
@@ -457,9 +459,15 @@ static void n329_spi_init(struct n329_spi_host *host)
 {
 	clk_enable(host->clk);
 
-	// XXX writel(readl(REG_APBIPRST) | SPI0RST, REG_APBIPRST);
-	// XXX writel(readl(REG_APBIPRST) & ~SPI0RST, REG_APBIPRST);
 	spin_lock_init(&host->lock);
+
+	if (!n329_gcr_down(host->gcr_dev)) {
+		n329_gcr_write(host->gcr_dev, n329_gcr_read(host->gcr_dev, 
+				REG_GCR_APBIPRST) | SPI0RST, REG_GCR_APBIPRST);
+		n329_gcr_write(host->gcr_dev, n329_gcr_read(host->gcr_dev, 
+				REG_GCR_APBIPRST) & ~SPI0RST, REG_GCR_APBIPRST);
+		n329_gcr_up(host->gcr_dev);
+	}
 
 	n329_spi_tx_edge(host, host->pdata->txneg);
 	n329_spi_rx_edge(host, host->pdata->rxneg);
@@ -487,10 +495,20 @@ static struct n329_spi_info spi_info = {
 static int n329_spi_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
+	struct device_node *gcr_node;
+	struct platform_device *gcr_pdev;
 	struct n329_spi_host *host;
 	struct spi_master *master;
 	struct resource *iores;
 	int ret = 0;
+
+	/* Defer probing until the GCR driver is available */
+	gcr_node = of_parse_phandle(np, "gcr-dev", 0);
+	if (!gcr_node)
+		return -EPROBE_DEFER;
+	gcr_pdev = of_find_device_by_node(gcr_node);
+	if (!gcr_pdev)
+		return -EPROBE_DEFER;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*host));
 	if (!master)
@@ -503,6 +521,7 @@ static int n329_spi_probe(struct platform_device *pdev)
 
 	host->pdata  = &spi_info;
 	host->dev = &pdev->dev;
+	host->gcr_dev = &gcr_pdev->dev;
 	init_completion(&host->done);
 
 	host->master = master;
