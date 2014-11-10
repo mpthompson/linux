@@ -1817,6 +1817,12 @@ static int __init n329_udc_probe(struct platform_device *pdev)
 	clk_prepare_enable(udc->usb20_hclk);
 	n329_clocks_config_usb20(12000000);
 
+	if (clk_get_rate(udc->usb20_clk) != 12000000) {
+		dev_err(&pdev->dev, "failed to set USB gadget clock to 12MHz\n");
+		retval = -ENXIO;
+		goto err0;
+	}
+
 	udc->res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (udc->res == NULL) {
 		dev_dbg(&pdev->dev, "%s: platform_get_resource failed\n", __func__);

@@ -35,7 +35,7 @@
 #define	REG_HC_INT_STATUS		(0x00C)		/* Interrupt Status  Register */
 #define	REG_HC_INT_ENABLE		(0x010)		/* Interrupt Enable Register */
 #define	REG_HC_INT_DISABLE		(0x014)		/* Interrupt Disable Regster */
-#define	REG_HC_HCCA				(0x018)		/* Communication Area Register */
+#define	REG_HC_HCCA			(0x018)		/* Communication Area Register */
 #define	REG_HC_PERIOD_CURED		(0x01C)		/* HcPeriodCurrentED */
 #define	REG_HC_CTRL_HEADED		(0x020)		/* Control Head ED Register */
 #define	REG_HC_CTRL_CURED		(0x024)		/* Control Current ED Regist */
@@ -47,19 +47,19 @@
 #define	REG_HC_FM_NUMBER		(0x03C)		/* Frame Number Register */
 #define	REG_HC_PERIOD_START		(0x040)		/* Periodic Start Register */
 #define	REG_HC_LS_THRESHOLD		(0x044)		/* Low Speed Threshold Register */
-#define	REG_HC_RH_DESCRIPTORA	(0x048)		/* Root Hub Descriptor A Register */
-#define	REG_HC_RH_DESCRIPTORB	(0x04C)		/* Root Hub Descriptor B Register */
+#define	REG_HC_RH_DESCRIPTORA		(0x048)		/* Root Hub Descriptor A Register */
+#define	REG_HC_RH_DESCRIPTORB		(0x04C)		/* Root Hub Descriptor B Register */
 #define	REG_HC_RH_STATUS		(0x050)		/* Root Hub Status Register */
-#define	REG_HC_RH_PORT_STATUS1	(0x054)		/* Root Hub Port Status [1] */
-#define	REG_HC_RH_PORT_STATUS2	(0x058)		/* Root Hub Port Status [2] */
+#define	REG_HC_RH_PORT_STATUS1		(0x054)		/* Root Hub Port Status [1] */
+#define	REG_HC_RH_PORT_STATUS2		(0x058)		/* Root Hub Port Status [2] */
 #define	REG_HC_RH_OP_MODE		(0x204)
-	#define	DBR16				BIT(0)		/* Data Buffer Region 16 */
-	#define	HCABORT				BIT(1)		/* AHB Bus ERROR Response */
-	#define	OCALOW				BIT(3)		/* Over Current Active Low */
-	#define	PPCALOW				BIT(4)		/* Port Power Control Active Low */
-	#define	SIEPDIS				BIT(8)		/* SIE Pipeline Disable */
-	#define	DISPRT1				BIT(16)		/* Disable Port 1 */
-	#define	DISPRT2				BIT(17)		/* Disable Port 2 */
+	#define	DBR16			BIT(0)		/* Data Buffer Region 16 */
+	#define	HCABORT			BIT(1)		/* AHB Bus ERROR Response */
+	#define	OCALOW			BIT(3)		/* Over Current Active Low */
+	#define	PPCALOW			BIT(4)		/* Port Power Control Active Low */
+	#define	SIEPDIS			BIT(8)		/* SIE Pipeline Disable */
+	#define	DISPRT1			BIT(16)		/* Disable Port 1 */
+	#define	DISPRT2			BIT(17)		/* Disable Port 2 */
 
 #define DRIVER_DESC "Nuvoton N329XX OHCI Host Controller"
 

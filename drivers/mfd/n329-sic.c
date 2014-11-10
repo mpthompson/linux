@@ -18,11 +18,13 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/clk.h>
 #include <linux/mfd/n329-sic.h>
 
 struct n329_sic {
 	void __iomem *base;
 	struct semaphore sem;
+	struct clk *clk;
 	u32 (*read)(struct n329_sic *, u32 addr);
 	void (*write)(struct n329_sic *, u32 value, u32 addr);
 };
@@ -90,7 +92,14 @@ static int n329_sic_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct resource *mem_res;
+	struct clk *sic_clk;
 	struct n329_sic *sic;
+
+	sic_clk = of_clk_get(np, 0);
+	if (IS_ERR(sic_clk)) {
+		dev_err(&pdev->dev, "Failed to get clocks\n");
+		return -ENODEV;
+	}
 
 	sic = devm_kzalloc(&pdev->dev, sizeof(*sic), GFP_KERNEL);
 	if (!sic)
@@ -104,13 +113,27 @@ static int n329_sic_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, sic);
 
  	sema_init(&sic->sem, 1);
- 
-	sic->read = n329_sic_read_reg;
+
+	clk_prepare_enable(sic_clk);
+	sic->clk = sic_clk;
+
+ 	sic->read = n329_sic_read_reg;
 	sic->write = n329_sic_write_reg;
 
 	n329_sic_reset(sic);
 
 	return of_platform_populate(np, NULL, NULL, &pdev->dev);
+}
+
+static int n329_sic_remove(struct platform_device *pdev)
+{
+	struct n329_sic *sic = platform_get_drvdata(pdev);
+
+	clk_disable_unprepare(sic->clk);
+	iounmap(sic->base);
+	devm_kfree(&pdev->dev, sic);
+
+	return 0;
 }
 
 static const struct of_device_id n329_sic_dt_ids[] = {
@@ -121,12 +144,13 @@ static const struct of_device_id n329_sic_dt_ids[] = {
 };
 
 static struct platform_driver n329_sic_driver = {
-	.probe		= n329_sic_probe,
 	.driver		= {
 		.name	= "sic",
 		.owner	= THIS_MODULE,
 		.of_match_table = n329_sic_dt_ids,
 	},
+	.probe		= n329_sic_probe,
+	.remove		= n329_sic_remove,
 };
 module_platform_driver(n329_sic_driver);
 

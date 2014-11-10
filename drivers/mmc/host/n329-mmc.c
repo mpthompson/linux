@@ -60,7 +60,6 @@ struct n329_mmc_host {
 	spinlock_t lock;
 	unsigned char bus_width;
 	struct clk *sd_clk;
-	struct clk *sic_clk;
 };
 
 extern unsigned long n329_clocks_config_sd(unsigned long rate);
@@ -163,8 +162,6 @@ static irqreturn_t n329_mmc_irq(int irq, void *devid)
 
 static int n329_mmc_reset(struct n329_mmc_host *host)
 {
-	unsigned error;
-
 	/* Hold the SIC semaphore for the following operations */
     	if (n329_mmc_down(host))
     		return -ERESTARTSYS;
@@ -597,7 +594,7 @@ static void n329_mmc_bc(struct n329_mmc_host *host)
 
 	/* Hold the SIC semaphore for the whole SD command */
     	if (n329_mmc_down(host)) {
-    		cmd->error -ERESTARTSYS;
+    		cmd->error = -ERESTARTSYS;
     		return;
 	}
 
@@ -620,7 +617,7 @@ static void n329_mmc_ac(struct n329_mmc_host *host)
 
 	/* Hold the SIC semaphore for the whole SD command */
     	if (n329_mmc_down(host)) {
-    		cmd->error -ERESTARTSYS;
+    		cmd->error = -ERESTARTSYS;
     		return;
 	}
 
@@ -651,7 +648,7 @@ static void n329_mmc_adtc(struct n329_mmc_host *host)
 
 	/* Hold the SIC semaphore for the whole SD command */
     	if (n329_mmc_down(host)) {
-    		cmd->error -ERESTARTSYS;
+    		cmd->error = -ERESTARTSYS;
     		return;
 	}
 
@@ -907,14 +904,12 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	}
 
 	host->sd_clk = of_clk_get(np, 0);
-	host->sic_clk = of_clk_get(np, 1);
-	if (IS_ERR(host->sd_clk) || IS_ERR(host->sic_clk)) {
+	if (IS_ERR(host->sd_clk)) {
 		ret = -ENODEV;
 		dev_err(&pdev->dev, "Failed to get clocks\n");
 		goto out_dma_free;
 	}
 	clk_prepare_enable(host->sd_clk);
-	clk_prepare_enable(host->sic_clk);
 
 	ret = n329_mmc_reset(host);
 	if (ret) {
@@ -961,7 +956,6 @@ static int n329_mmc_probe(struct platform_device *pdev)
 	return 0;
 
 out_clk_disable:
-	clk_disable_unprepare(host->sic_clk);
 	clk_disable_unprepare(host->sd_clk);
 out_dma_free:
 	if (host->buffer)
@@ -988,7 +982,6 @@ static int n329_mmc_remove(struct platform_device *pdev)
 		dma_free_coherent(&pdev->dev, MCI_BUFSIZE, host->buffer,
 					host->physical_address);
 
-	clk_disable_unprepare(host->sic_clk);
 	clk_disable_unprepare(host->sd_clk);
 
 	mmc_free_host(mmc);

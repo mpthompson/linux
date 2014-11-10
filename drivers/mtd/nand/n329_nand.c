@@ -49,7 +49,6 @@ struct n329_nand_host {
 	struct device *dev;
 	struct device *sic_dev;
 
-	struct clk *sic_clk;
 	struct clk *nand_clk;
 	spinlock_t lock;
 
@@ -527,14 +526,12 @@ static int n329_nand_probe(struct platform_device *pdev)
 	spin_lock_init(&host->lock);
 
 	host->nand_clk = of_clk_get(np, 0);
-	host->sic_clk = of_clk_get(np, 1);
-	if (IS_ERR(host->nand_clk) || IS_ERR(host->sic_clk)) {
+	if (IS_ERR(host->nand_clk)) {
 		ret = -ENODEV;
 		dev_err(&pdev->dev, "%s: Failed to get clocks\n", __func__);
 		goto out_mem_free;
 	}
 	clk_prepare_enable(host->nand_clk);
-	clk_prepare_enable(host->sic_clk);
 
 	chip->cmdfunc = n329_nand_command;
 	chip->dev_ready = n329_nand_devready;
@@ -566,7 +563,6 @@ static int n329_nand_probe(struct platform_device *pdev)
 	return 0;
 
 out_clk_disable:
-	clk_disable_unprepare(host->sic_clk);
 	clk_disable_unprepare(host->nand_clk);
 out_mem_free:
 	kfree(host);
@@ -579,7 +575,6 @@ static int n329_nand_remove(struct platform_device *pdev)
 
 	nand_release(&host->mtd);
 	
-	clk_disable_unprepare(host->sic_clk);
 	clk_disable_unprepare(host->nand_clk);
 
 	kfree(host);

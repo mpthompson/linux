@@ -89,6 +89,7 @@
 			#size-cells = <1>;
 			compatible = "nuvoton,n32905-sic";
 			reg = <0xB1006000 0x1000>;
+			clocks = <&clks 107>;
 			status = "disabled";
 			ranges;
 
@@ -96,7 +97,7 @@
 				compatible = "nuvoton,n32905-mmc";
 				reg = <0xB1006820 0x40>;
 				interrupts = <17>;
-				clocks = <&clks 43>, <&clks 107>;
+				clocks = <&clks 43>;
 				status = "disabled";
 			};
 
@@ -105,7 +106,7 @@
 				#size-cells = <1>;
 				compatible = "nuvoton,n32905-nand";
 				reg = <0xB10068A0 0x60>;
-				clocks = <&clks 108>, <&clks 107>;
+				clocks = <&clks 108>;
 				status = "disabled";
 			};
 		};
