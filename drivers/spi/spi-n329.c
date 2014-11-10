@@ -461,13 +461,7 @@ static void n329_spi_init(struct n329_spi_host *host)
 
 	spin_lock_init(&host->lock);
 
-	if (!n329_gcr_down(host->gcr_dev)) {
-		n329_gcr_write(host->gcr_dev, n329_gcr_read(host->gcr_dev, 
-				REG_GCR_APBIPRST) | SPI0RST, REG_GCR_APBIPRST);
-		n329_gcr_write(host->gcr_dev, n329_gcr_read(host->gcr_dev, 
-				REG_GCR_APBIPRST) & ~SPI0RST, REG_GCR_APBIPRST);
-		n329_gcr_up(host->gcr_dev);
-	}
+	n329_gcr_apbip_reset(host->gcr_dev, SPI0RST);
 
 	n329_spi_tx_edge(host, host->pdata->txneg);
 	n329_spi_rx_edge(host, host->pdata->rxneg);

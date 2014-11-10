@@ -39,7 +39,7 @@
 	#define PRTMOD1		BIT(1) 		/* Priority Mode Control 1 */
 	#define PRTMOD0		BIT(0) 		/* Priority Mode Control 0 */
 
-#define REG_GCR_AHBIPRST		(0x14)		/* R/W - AHB IP Reset Control Resister */
+#define REG_GCR_AHBIPRST	(0x14)		/* R/W - AHB IP Reset Control Resister */
 	#define JPGRST		BIT(17) 	/* JPG Reset */
 	#define BLTRST		BIT(16)		/* 2D Accelerator Reset */
 	#define AESRST		BIT(15) 	/* AES Reset */
@@ -58,7 +58,7 @@
 	#define SRAMRST		BIT(2) 		/* SRAM Reset */
 	#define SDICRST		BIT(0) 		/* SDIC Reset */
 
-#define REG_GCR_APBIPRST		(0x18)		/* R/W - APB IP Reset Control Resister */
+#define REG_GCR_APBIPRST	(0x18)		/* R/W - APB IP Reset Control Resister */
 	#define ADCRST		BIT(14)		/* ADC Reset */
 	#define SPI1RST		BIT(13) 	/* SPI 1 Reset */
 	#define SPI0RST		BIT(12) 	/* SPI 0 Reset */
@@ -162,7 +162,7 @@
 	#define MARGIN		BIT(1)		/* OTP MARGIN Read Mode */
 	#define OTPRD_EN	BIT(0)		/* OTP Read Enable */
 
-#define REG_GCR_OTP_PROG		(0x44)		/* R/W - OTP Program Control Register */
+#define REG_GCR_OTP_PROG	(0x44)		/* R/W - OTP Program Control Register */
 	#define BURN_CYC	BITS(29,16)	/* OTP Program Cycle */
 	#define OTP_EN		BITS(12,4)	/* OTP Enable */
 	#define VPP_STA		BIT(1)		/* VPP State Indicator */
@@ -304,5 +304,9 @@ extern void n329_gcr_write(struct device *dev, u32 value, u32 addr);
 /* GCR protection semaphore */
 extern int n329_gcr_down(struct device *dev);
 extern void n329_gcr_up(struct device *dev);
+
+/* GCR reset helper functions */
+extern int n329_gcr_ahbip_reset(struct device *dev, u32 reset);
+extern int n329_gcr_apbip_reset(struct device *dev, u32 reset);
 
 #endif

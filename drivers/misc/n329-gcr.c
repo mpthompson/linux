@@ -80,6 +80,52 @@ void n329_gcr_up(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(n329_gcr_up);
 
+int n329_gcr_ahbip_reset(struct device *dev, u32 reset)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct n329_gcr *gcr = platform_get_drvdata(pdev);
+	u32 val;
+	int ret;
+
+	ret = down_interruptible(&gcr->sem);
+
+	if (!ret) {
+		val = gcr->read(gcr, REG_GCR_AHBIPRST);
+		val |= reset;
+		gcr->write(gcr, val, REG_GCR_AHBIPRST);
+		val &= ~reset;
+		gcr->write(gcr, val, REG_GCR_AHBIPRST);
+
+		up(&gcr->sem);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(n329_gcr_ahbip_reset);
+
+int n329_gcr_apbip_reset(struct device *dev, u32 reset)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct n329_gcr *gcr = platform_get_drvdata(pdev);
+	u32 val;
+	int ret;
+
+	ret = down_interruptible(&gcr->sem);
+
+	if (!ret) {
+		val = gcr->read(gcr, REG_GCR_APBIPRST);
+		val |= reset;
+		gcr->write(gcr, val, REG_GCR_APBIPRST);
+		val &= ~reset;
+		gcr->write(gcr, val, REG_GCR_APBIPRST);
+
+		up(&gcr->sem);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(n329_gcr_apbip_reset);
+
 static int n329_gcr_probe(struct platform_device *pdev)
 {
 	struct resource *mem_res;
