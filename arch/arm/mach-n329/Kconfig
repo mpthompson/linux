@@ -1,6 +1,12 @@
 config SOC_N32905
 	bool
 	select CPU_ARM926T
+	select PINCTRL_N32905
+
+config SOC_N32926
+	bool
+	select CPU_ARM926T
+	select PINCTRL_N32926
 
 config ARCH_N329
 	bool "Nuvoton N329XX support"
@@ -9,21 +15,6 @@ config ARCH_N329
 	select PINCTRL
 	select SOC_BUS
 	select SOC_N32905
+	select SOC_N32926
 	help
 	  Support for Nuvoton N329XX-based family of processors
-
-if ARCH_N329
-
-choice
-	prompt "External Crystal"
-	default N329_EXTCLK_12M
-
-config N329_EXTCLK_12M
-	bool "12MHz"
-
-config N329_EXTCLK_27M
-	bool "27MHz"
-
-endchoice
-
-endif

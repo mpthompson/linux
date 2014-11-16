@@ -97,17 +97,15 @@ config PINCTRL_BCM281XX
 	  BCM28145, and BCM28155 SoCs.  This driver requires the pinctrl
 	  framework.  GPIO is provided by a separate GPIO driver.
 
-config PINCTRL_N329
+config PINCTRL_N32905
 	bool
 	select PINMUX
 	select PINCONF
 
-config PINCTRL_N32905
-	bool "Nuvoton N32905 pinctrl driver"
-	depends on ARCH_N329
-	select PINCTRL_N329
-	help
-	  Say Y here to enable the N32905 pinctrl driver
+config PINCTRL_N32926
+	bool
+	select PINMUX
+	select PINCONF
 
 config PINCTRL_IMX
 	bool
